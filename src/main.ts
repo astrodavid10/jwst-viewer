@@ -94,7 +94,7 @@ if (boolParam("kioskStats")) {
     // Image to open on (must match a Place/image name in jwst.wtml). Leave "" to
     // open on the first gallery image. The viewer parks zoomed out on this target
     // and flies in once the intro modal is dismissed. A ?image= link overrides it.
-    startImage: "Centaurus A (MIRI + NIRCam image wide-field view)",
+    startImage: "Star-forming region IC 348 (NIRCam image)",
     kioskMode: boolParam("kiosk"),
     kioskHomeUrl: PUBLIC_URL,
   })
