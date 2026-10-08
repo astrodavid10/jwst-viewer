@@ -295,7 +295,7 @@ add(["A fresh look at a classic deep field", "Portion of the Hubble eXtreme Deep
 add("Webb Takes a Stunning, Star-Filled Portrait of the Pillars of Creation (Cropped)", { ly: 6500, note: "M16, Eagle Nebula." });
 
 // ════════════════════════════════════════════════════════════════════════════
-// 2026-07 expansion: 12 new Places from jwst-july2026.wtml (285 total).
+// 2026-07 expansion: 12 new Places from jwst-july2026.wtml (269 total after).
 // See jwstTypes.ts for the matching type entries and CATALOG_UPDATE.md for the
 // process. Variants of one object share a distance.
 // ════════════════════════════════════════════════════════════════════════════
@@ -308,6 +308,28 @@ add("FS Tau (Webb NIRCam image)", { ly: 450, note: "FS Tau young star system, Ta
 add("Webb unveils young stars across every stage of formation", { ly: 1350, uncertain: true, note: "Orion A molecular cloud; young stellar objects." });
 add("Abell S1063 galaxy cluster", { ly: 4 * GLY, note: "Abell S1063 (RXC J2248.7-4431), z~0.348 (lens plane)." });
 add("A cosmic construction project", { ly: 4.4 * GLY, uncertain: true, note: "Galaxy cluster MACS J0553.4-3342, z~0.412." });
+
+// ════════════════════════════════════════════════════════════════════════════
+// 2026-10 expansion: 16 new Places from the esawebb.org refresh (feeds/jwst in
+// wwt-core-catalogs; 285 total after). Distances are from each release's own
+// text where it gives one; `uncertain` marks the inferred ones.
+// ════════════════════════════════════════════════════════════════════════════
+add("Webb opens a Treasure Chest filled with stars", { ly: 7500, note: "Carina Nebula (release: 7500 ly)." });
+add(["Striking star clusters and irregular clumps", "Starstruck image of Arp 263", "Arp 263 (crop)"],
+  { ly: 25 * MLY, note: "Arp 263 / NGC 3239, Leo (release: ~25 million ly)." });
+add("Galaxies in a cosmic house of mirrors", { ly: 5.8 * GLY, uncertain: true,
+  note: "MACS J0454.1-0300; seen when the Universe was ~8 Gyr old (lens plane)." });
+add(["Lion Nebula (NIRCam + MIRI image)", "Lion Nebula (MIRI image)"], { ly: 5000, uncertain: true,
+  note: "NGC 2392 (Eskimo/Lion Nebula), Gemini; literature 4,000–6,500 ly." });
+add(["IRS 3 Field (NIRCam and MIRI image)", "IRS 3 Field (NIRCam image)", "IRS 3 Field (MIRI image)"],
+  { ly: 26000, note: "IRS 3, 0.55 ly from Sagittarius A* (Galactic Center)." });
+add(["IC 348 Crop: Star embedded in a nebula", "IC 348 Crop: Central star cluster",
+  "IC 348 Crop: Stars and faint outflows"], { ly: 1000, note: "IC 348, Perseus (release: ~1000 ly)." });
+add("IC 348 Crop: Spiral galaxies", { ly: 1 * MLY, uncertain: true,
+  note: "Background spirals seen through IC 348; release: ~1000× farther than the nebula." });
+add("IC 348 Crop: Gravitational lensing", { ly: 1 * GLY, uncertain: true,
+  note: "Background lens behind IC 348; no redshift published, order-of-magnitude placement." });
+add("NGC 7129 (NIRCam image)", { ly: 3300, uncertain: true, note: "NGC 7129 reflection nebula + young cluster, Cepheus." });
 
 /** Look up a curated distance (light-years) for an image by name. Returns null if unknown. */
 export function distanceForName(name: string): JwstDistance | null {
