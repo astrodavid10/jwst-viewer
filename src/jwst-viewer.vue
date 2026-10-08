@@ -441,7 +441,7 @@
       <!-- Kiosk QR modal: shown instead of navigating away on any external
            link, and for the take-home QR. Nested here (not teleported) so the
            --accent-color CSS var resolves. -->
-      <kiosk-qr-modal v-if="showQrModal" :url="qrUrl" :title="qrTitle" @close="closeQR" />
+      <kiosk-qr-modal v-if="showQrModal" :url="qrUrl" :title="qrTitle" :type-url="qrTypeUrl" @close="closeQR" />
     </div>
   </v-app>
 </template>
@@ -825,6 +825,7 @@ export default defineComponent({
       showQrModal: false,
       qrUrl: "",
       qrTitle: "",
+      qrTypeUrl: "",
       // Teardown fns for kiosk guards/watchers, run in beforeUnmount.
       kioskCleanups: [] as Array<() => void>,
       // Attract loop (auto-cycles images after idle; guest touch stops it).
@@ -1130,6 +1131,18 @@ export default defineComponent({
         ? `Sky view showing the Webb image: ${this.selectedName}`
         : "Sky view";
     },
+    // The take-home address as a visitor would type it: just the site, no
+    // https://, no query string (the QR carries the image deep link).
+    homeTypeUrl(): string {
+      const base = this.kioskHomeUrl
+        || urlWithoutParams("kiosk", "kioskIdle", "kioskStats", "kiosk3dEvery", "tileq", "image", "mode", "debug", "galaxy");
+      try {
+        const u = new URL(base);
+        return (u.host + u.pathname).replace(/\/$/, "");
+      } catch {
+        return base;
+      }
+    },
     // In kiosk mode the take-home QR must point at a public https URL that
     // isn't this machine; otherwise staff see a warning badge (audit J2).
     kioskHomeUrlProblem(): string {
@@ -1179,7 +1192,7 @@ export default defineComponent({
     // can "take this view home" (audit E11).
     homeUrl(): string {
       const base = this.kioskHomeUrl
-        || urlWithoutParams("kiosk", "kioskIdle", "kioskStats", "kiosk3dEvery", "tileq", "image", "mode", "debug");
+        || urlWithoutParams("kiosk", "kioskIdle", "kioskStats", "kiosk3dEvery", "tileq", "image", "mode", "debug", "galaxy");
       const params = new URLSearchParams();
       if (this.selectedPlace && !this.attractMode) { params.set("image", this.selectedName); }
       params.set("utm_source", "kiosk");
@@ -2414,9 +2427,10 @@ export default defineComponent({
 
     // Open the kiosk QR modal for `url`. Closes the menus so they don't sit
     // under the backdrop.
-    showQR(url: string, title = ""): void {
+    showQR(url: string, title = "", typeUrl = ""): void {
       this.qrUrl = url;
       this.qrTitle = title;
+      this.qrTypeUrl = typeUrl;
       this.showQrModal = true;
       this.isMenuOpen = false;
       this.showSurveyMenu = false;
@@ -2427,7 +2441,7 @@ export default defineComponent({
     // "Take it with you" — QR of the public site URL so a guest can continue on
     // their phone.
     showHomeQR(): void {
-      this.showQR(this.homeUrl, "Take it with you");
+      this.showQR(this.homeUrl, "Take it with you", this.homeTypeUrl);
       statsTrack("takeHome");
     },
 
