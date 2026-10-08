@@ -1,0 +1,14 @@
+{
+  "magic": "CWF1",
+  "cellPx": 48,
+  "atlasCols": 85,
+  "atlasPxW": 4080,
+  "atlasPxH": 4080,
+  "spriteCount": 7225,
+  "format": "png",
+  "generic": 0,
+  "note": "UV for cell i: col=i%atlasCols, row=floor(i/atlasCols); u0=col*cellPx/atlasPxW, v0=row*cellPx/atlasPxH, du=cellPx/atlasPxW, dv=cellPx/atlasPxH",
+  "source": "cosmosweb_galaxies_with_fitsmap_sprites.db",
+  "sortKey": "density_excess",
+  "galaxies": 164155
+}
