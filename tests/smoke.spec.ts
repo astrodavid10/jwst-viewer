@@ -164,3 +164,46 @@ test("3D marker hover identifies the marker under the pointer", async ({ page })
   const shown = await page.locator(".marker-tip-name").innerText();
   expect(shown.length).toBeGreaterThan(0);
 });
+
+// The bottom dock (description, compare/opacity bars) must never overlap
+// itself or the gallery, at phone, landscape-phone and tablet sizes.
+for (const [w, h] of [[375, 667], [844, 390], [768, 1024]]) {
+  test(`no overlapping panels at ${w}x${h}`, async ({ browser }) => {
+    const ctx = await browser.newContext({ viewport: { width: w, height: h }, hasTouch: true });
+    const page = await ctx.newPage();
+    await page.goto("./");
+    await waitForApp(page);
+    await page.getByRole("button", { name: "Start exploring" }).click();
+    await expect(page.locator(".intro-backdrop")).toHaveCount(0);
+    await page.getByRole("button", { name: /^Compare/ }).click();
+    await expect(page.locator(".compare-bar")).toBeVisible();
+    await page.waitForTimeout(400);
+    const boxes = await page.evaluate(() => {
+      const r = (sel: string) => {
+        const b = document.querySelector(sel)?.getBoundingClientRect();
+        return b ? { sel, l: b.left, r: b.right, t: b.top, b: b.bottom } : null;
+      };
+      return [r(".description-panel"), r(".compare-bar"), r(".jwst-gallery"), r(".top-left-controls")].filter(Boolean);
+    });
+    const hits: string[] = [];
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) {
+        const a = boxes[i]!, b = boxes[j]!;
+        if (a.l < b.r - 1 && b.l < a.r - 1 && a.t < b.b - 1 && b.t < a.b - 1) { hits.push(`${a.sel} × ${b.sel}`); }
+      }
+    }
+    expect(hits).toEqual([]);
+    await ctx.close();
+  });
+}
+
+test("?galaxy=lite skips the heavy 3D assets", async ({ page }) => {
+  const reqs: string[] = [];
+  page.on("request", (r) => reqs.push(r.url()));
+  await page.goto("./?galaxy=lite&mode=3d");
+  await waitForApp(page);
+  await page.getByRole("button", { name: "Start exploring" }).click();
+  await page.waitForTimeout(8000);
+  expect(reqs.some((u) => u.includes("gaia-milkyway-2k"))).toBe(true);
+  expect(reqs.filter((u) => u.includes("galimg/") || u.includes("MilkyWay-4k"))).toEqual([]);
+});
