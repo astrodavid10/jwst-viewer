@@ -3,9 +3,10 @@
 // letterboxes non-square images with uniform (black/transparent) padding baked
 // into the pixels, so CSS object-fit:cover can't remove it. We load the tile
 // through a CORS-enabled image (data1.wwtassets.org sends
-// Access-Control-Allow-Origin: *; the cache-bust query forces a fresh CORS
-// fetch so a prior non-CORS cache entry can't taint the canvas), find the
-// non-padding bounding box, and crop to it.
+// Access-Control-Allow-Origin: * on GET), find the non-padding bounding box,
+// and crop to it. Callers load the visible <img> with crossorigin="anonymous"
+// too, so this second load is served from the HTTP cache rather than the
+// network (audit J6). Results are small blob: URLs, not base64 data: URLs.
 //
 // Shared by the gallery thumbnails (ImageGallery.vue) and the 3D
 // description-panel thumb (jwst-viewer.vue). Results — including the "" that
@@ -21,7 +22,7 @@ const inflight = new Map<string, Promise<string>>();
 const PAD_THRESHOLD = 8;
 
 /**
- * Resolve to a content-cropped JPEG data URL for the tile, or "" meaning
+ * Resolve to a content-cropped JPEG blob: URL for the tile, or "" meaning
  * "keep the original". Never rejects.
  */
 export function croppedTileUrl(baseUrl: string): Promise<string> {
@@ -75,14 +76,14 @@ export function croppedTileUrl(baseUrl: string): Promise<string> {
         out.width = cw;
         out.height = ch;
         out.getContext("2d")?.drawImage(canvas, minX, minY, cw, ch, 0, 0, cw, ch);
-        finish(out.toDataURL("image/jpeg", 0.9));
+        out.toBlob((blob) => finish(blob ? URL.createObjectURL(blob) : ""), "image/jpeg", 0.9);
       } catch {
         // Tainted canvas or any other failure: keep the uncropped tile.
         finish("");
       }
     };
     loader.onerror = () => { finish(""); };
-    loader.src = baseUrl + (baseUrl.includes("?") ? "&" : "?") + "cors=1";
+    loader.src = baseUrl;
   });
   inflight.set(baseUrl, p);
   return p;

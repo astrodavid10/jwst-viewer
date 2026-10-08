@@ -13,7 +13,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent } from "@vue/runtime-core";
+import { defineComponent } from "vue";
 
 
 export default defineComponent({
@@ -22,7 +22,8 @@ export default defineComponent({
   emits: ['enter', 'after-enter', 'leave'],
 
   methods: {
-    enter(element: HTMLElement) {
+    enter(el: Element) {
+      const element = el as HTMLElement;
       const width = getComputedStyle(element).width;
 
       element.style.width = width;
@@ -53,12 +54,14 @@ export default defineComponent({
       this.$emit('enter');
     },
 
-    afterEnter(element: HTMLElement) {
+    afterEnter(el: Element) {
+      const element = el as HTMLElement;
       element.style.height = "auto";
       this.$emit('after-enter');
     },
 
-    leave(element: HTMLElement) {
+    leave(el: Element) {
+      const element = el as HTMLElement;
       const height = getComputedStyle(element).height;
 
       element.style.height = height;
@@ -77,20 +80,13 @@ export default defineComponent({
 </script>
 
 <style scoped>
-* {
-  will-change: height;
-  transform: translateZ(0);
-  backface-visibility: hidden;
-  perspective: 1000px;
-}
-
 .expand-enter-active,
 .expand-leave-active {
   transition: height 0.2s ease-in-out;
   overflow: hidden;
 }
 
-.expand-enter,
+.expand-enter-from,
 .expand-leave-to {
   height: 0;
 }

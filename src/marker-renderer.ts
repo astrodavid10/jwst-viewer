@@ -41,8 +41,10 @@ export interface MarkerRow {
 const IS_COARSE_POINTER = (typeof window !== "undefined")
   && typeof window.matchMedia === "function"
   && window.matchMedia("(pointer: coarse)").matches;
-// Phones have high DPR, so a CSS-px ring reads much chunkier — keep mobile small.
-const DEFAULT_SIZE_PX = IS_COARSE_POINTER ? 6.5 : 26;
+// Phones have high DPR, so a CSS-px ring reads much chunkier: keep mobile
+// smaller than desktop, but big enough to aim a finger at (the hit radius on
+// touch is 24 px; audit J16).
+const DEFAULT_SIZE_PX = IS_COARSE_POINTER ? 11 : 26;
 
 const VERT_STRIDE = 16; // vec3 pos (12) + rgba uint8 (4)
 const COLOR_OFFSET = 12;

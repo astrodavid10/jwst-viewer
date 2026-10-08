@@ -3,7 +3,10 @@ const { defineConfig } = require("@vue/cli-service")
 
 module.exports = defineConfig({
   publicPath: "./",
-  
+
+  // Source maps would publish the full source and local paths (audit E4).
+  productionSourceMap: false,
+
   configureWebpack: {
     plugins: [
       new VuetifyPlugin()
@@ -18,11 +21,11 @@ module.exports = defineConfig({
     }
   },
 
-  // Needed for BrowserStack/Safari testing as of 2023 March. This makes the
-  // dev server insecure, but that's OK since we only use it in controlled
-  // circumstances. https://stackoverflow.com/questions/43619644
   devServer: {
-    allowedHosts: 'all',
+    // BrowserStack/Safari testing needs the host check off, which is a
+    // DNS-rebinding risk on shared networks, so it's opt-in per run:
+    //   ALLOW_ALL_HOSTS=1 yarn serve      (audit E17)
+    allowedHosts: process.env.ALLOW_ALL_HOSTS ? 'all' : 'auto',
     client: {
       overlay: false
     }

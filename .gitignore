@@ -27,3 +27,11 @@ tsconfig.tsbuildinfo
 
 # Local tool settings
 .claude/settings.local.json
+
+# Playwright
+/test-results/
+/playwright-report/
+
+# Per-machine build settings (VUE_APP_PUBLIC_URL etc.)
+.env.local
+.env.*.local

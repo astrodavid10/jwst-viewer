@@ -3,12 +3,19 @@
        --accent-color CSS custom property resolvable (see kiosk implementation
        rule §1.2). Click outside the panel closes. -->
   <div class="kiosk-qr-backdrop" @click.self="$emit('close')">
-    <div class="kiosk-qr-panel" role="dialog" aria-modal="true" :aria-label="displayTitle">
-      <h2 class="kiosk-qr-title">{{ displayTitle }}</h2>
+    <div
+      class="kiosk-qr-panel"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="kiosk-qr-title"
+      aria-describedby="kiosk-qr-url"
+      @keydown.tab.prevent="trapFocus"
+    >
+      <h2 id="kiosk-qr-title" class="kiosk-qr-title">{{ displayTitle }}</h2>
 
       <!-- The QR itself stays dark-on-light so phone cameras read it; the gold
            theming goes AROUND the card, never inverting the modules. -->
-      <div class="kiosk-qr-card">
+      <div class="kiosk-qr-card" role="img" :aria-label="`QR code linking to ${url}`">
         <qrcode-vue
           :value="url"
           :size="232"
@@ -19,10 +26,10 @@
         />
       </div>
 
-      <p class="kiosk-qr-url">{{ truncatedUrl }}</p>
+      <p id="kiosk-qr-url" class="kiosk-qr-url">{{ truncatedUrl }}</p>
       <p class="kiosk-qr-caption">Scan with your phone's camera</p>
 
-      <button type="button" class="kiosk-qr-close control-btn-like" @click="$emit('close')">
+      <button ref="closeBtn" type="button" class="kiosk-qr-close control-btn-like" @click="$emit('close')">
         Close
       </button>
     </div>
@@ -49,6 +56,8 @@ export default defineComponent({
   data() {
     return {
       autoCloseTimer: 0,
+      // Focus returns here when the modal closes (audit J14).
+      returnFocusTo: null as HTMLElement | null,
     };
   },
   computed: {
@@ -66,12 +75,22 @@ export default defineComponent({
     },
   },
   mounted() {
+    this.returnFocusTo = document.activeElement as HTMLElement | null;
+    (this.$refs.closeBtn as HTMLElement | undefined)?.focus();
     if (this.autoCloseMs > 0) {
       this.autoCloseTimer = window.setTimeout(() => this.$emit("close"), this.autoCloseMs);
     }
   },
   beforeUnmount() {
     window.clearTimeout(this.autoCloseTimer);
+    this.returnFocusTo?.focus?.();
+  },
+  methods: {
+    // The Close button is the dialog's only focusable control, so Tab and
+    // Shift+Tab simply keep focus on it.
+    trapFocus(): void {
+      (this.$refs.closeBtn as HTMLElement | undefined)?.focus();
+    },
   },
 });
 </script>
@@ -124,7 +143,7 @@ export default defineComponent({
 .kiosk-qr-url {
   margin: 0;
   max-width: 100%;
-  color: rgba(255, 255, 255, 0.6);
+  color: rgba(255, 255, 255, 0.8);
   font-size: 0.75rem;
   word-break: break-all;
   text-align: center;

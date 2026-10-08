@@ -28,7 +28,7 @@ export const KIOSK_ATTRACT_3D_OVERVIEW_DWELL_MS = 7000; // dwell at the Milky Wa
 export const KIOSK_ATTRACT_3D_NEXT_HOLD_MS = 5000;    // hold at the next image's marker before dropping back to 2D
 
 // Only ever surface real web links as QR codes (never about:blank, javascript:, …).
-function isHttpUrl(url: string): boolean {
+export function isHttpUrl(url: string): boolean {
   return /^https?:\/\//i.test(url);
 }
 
