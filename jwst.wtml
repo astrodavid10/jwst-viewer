@@ -2929,4 +2929,14 @@ Image processed by Brittany Kundert.</Description>
       </ImageSet>
     </ForegroundImageSet>
   </Place>
+  <Place Angle="0" AngularSize="0" Constellation="PER" DataSetType="Sky" Dec="32.141545332833154" Magnitude="0" Name="Star-forming region IC 348 (NIRCam image)" Opacity="100" RA="3.7419053921717245" Rotation="0" Thumbnail="https://data1.wwtassets.org/feeds/jwst/weic2619a/thumb.jpg" ZoomLevel="3.386260864976988">
+    <Description>The NASA/ESA/CSA James Webb Space Telescope recently observed IC 348, a star-forming region just 1000 light-years away. This is one of the largest Webb images released to the public so far. This near-infrared vista of IC 348 reveals a collection of objects called brown dwarfs, which are smaller than the smallest stars. Researchers used the unparalleled sensitivity of Webb’s NIRCam (Near-Infrared Camera) to track down the smallest brown dwarfs in IC 348, which weigh in at just just twice the mass of Jupiter. These are the least massive brown dwarfs known, and their existence poses challenges to models of how stars form. In addition to the brown dwarfs and young stars scattered across the swirling nebula, this image provides a unique perspective on a handful of protostars, which can be seen in the upper-right corner. These protostars are ejecting powerful jets that have crashed into the gas and dust surrounding them, creating luminous regions called Herbig-Haro objects. [Image Description: A star-forming region. It is blanketed in thick clouds of gas and dust, millions of kilometres across, that form swirling patterns. Bright stars are scattered throughout the clouds, with the densest cluster situated in the centre of the scene. Each is crowned with six long points created by the optics of the telescope’s mirrors. In the upper right, a couple of hidden stars blast out long, glowing jets of material.]</Description>
+    <ForegroundImageSet>
+      <ImageSet BandPass="Visible" BaseDegreesPerTile="0.5694968601150785" BaseTileLevel="0" BottomsUp="False" CenterX="56.12858414321674" CenterY="32.14155082227829" DataSetType="Sky" ElevationModel="False" FileType=".png" Generic="False" Name="Star-forming region IC 348 (NIRCam image)" OffsetX="4.344916230126026e-06" OffsetY="4.344916230126026e-06" Projection="Tan" QuadTreeMap="" Rotation="-108.3" Sparse="True" StockSet="False" TileLevels="8" Url="https://data1.wwtassets.org/feeds/jwst/weic2619a/L{1}X{2}Y{3}.png" WidthFactor="2">
+        <Credits>ESA/Webb, NASA, CSA, K. Luhman, C. Alves De Oliveira, M. Zamani (ESA/Webb)</Credits>
+        <CreditsUrl>https://esawebb.org/images/weic2619a/</CreditsUrl>
+        <ThumbnailUrl>https://data1.wwtassets.org/feeds/jwst/weic2619a/thumb.jpg</ThumbnailUrl>
+      </ImageSet>
+    </ForegroundImageSet>
+  </Place>
 </Folder>
