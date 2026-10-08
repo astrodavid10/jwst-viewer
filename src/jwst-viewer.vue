@@ -10,15 +10,26 @@
     >
       <WorldWideTelescope :wwt-namespace="wwtNamespace"></WorldWideTelescope>
 
-      <!-- Loading modal -->
+      <!-- Loading modal; becomes the error card if startup fails (audit E3). -->
       <transition name="fade">
-        <div class="modal" id="modal-loading" v-show="isLoading">
-          <div class="container">
+        <div class="modal" id="modal-loading" v-show="isLoading || bootError">
+          <div class="container" v-if="!bootError" role="status">
             <div class="spinner"></div>
             <p>{{ loadingStatus }}</p>
           </div>
+          <div class="boot-error" v-else role="alert">
+            <h2 class="boot-error-title">The images couldn't be loaded</h2>
+            <p>{{ bootError }}</p>
+            <button v-if="bootRetryable" type="button" class="boot-retry" @click="retryBoot">Try again</button>
+            <p v-if="bootRetryInS" class="boot-auto">Trying again automatically in {{ bootRetryInS }} seconds.</p>
+          </div>
         </div>
       </transition>
+
+      <!-- Screen-reader-only page heading (the intro's h1 goes away with it)
+           and polite announcements (audit J14). -->
+      <h1 v-if="!showIntro" class="visually-hidden">{{ introTitle }}</h1>
+      <div class="visually-hidden" aria-live="polite" aria-atomic="true">{{ liveMessage }}</div>
 
       <!-- Top-left controls: menu + fullscreen -->
       <div class="top-left-controls">
@@ -43,16 +54,37 @@
         >
           <font-awesome-icon :icon="fullscreenModeActive ? 'compress' : 'expand'" />
         </button>
-        <button
-          class="control-btn mode-toggle"
-          :class="{ active: mode3D }"
-          @click="toggle3D"
-          v-tip="mode3D ? 'Switch to 2D sky view' : 'Switch to 3D placement view'"
-        >{{ mode3D ? '2D' : '3D' }}</button>
+        <div
+          class="mode-seg"
+          role="group"
+          aria-label="View"
+          @pointerenter="warm3D()"
+          @focusin="warm3D()"
+        >
+          <button
+            type="button"
+            class="mode-seg-btn"
+            :class="{ active: !mode3D }"
+            :aria-pressed="!mode3D"
+            v-tip="'Sky view: images on the sky'"
+            @click="mode3D && toggle3D()"
+          >2D</button>
+          <button
+            type="button"
+            class="mode-seg-btn"
+            :class="{ active: mode3D }"
+            :aria-pressed="mode3D"
+            v-tip="'3D view: where each image is in space'"
+            @click="!mode3D && toggle3D()"
+          >3D</button>
+        </div>
 
         <ul id="hamb-menu-list" class="hamb-menu" :class="{ show: isMenuOpen }">
           <li><button type="button" class="hamb-menu-item" @click="openIntro">
             <font-awesome-icon icon="info-circle" /> Overview
+          </button></li>
+          <li v-if="tourPlaces.length"><button type="button" class="hamb-menu-item" @click="startTour">
+            <font-awesome-icon icon="route" /> Guided tour
           </button></li>
           <li v-if="!mode3D"><button
             type="button"
@@ -61,16 +93,19 @@
             :aria-expanded="showSurveyMenu"
             @click="toggleSurveyMenu"
           >
-            <font-awesome-icon icon="star" /> Choose sky survey
+            <font-awesome-icon icon="panorama" /> Choose sky survey
           </button></li>
-          <li><button type="button" class="hamb-menu-item" @click="toggleCrossfade">
-            <font-awesome-icon icon="adjust" /> Crossfade {{ showCrossfade ? '(on)' : '(off)' }}
+          <li><button type="button" class="hamb-menu-item" :aria-pressed="showCrossfade" @click="toggleCrossfade">
+            <font-awesome-icon icon="adjust" /> <span class="hamb-menu-label">Opacity slider</span>
+            <font-awesome-icon icon="check" class="menu-check" :class="{ on: showCrossfade }" />
           </button></li>
-          <li><button type="button" class="hamb-menu-item" @click="toggleConstellations">
-            <font-awesome-icon icon="star" /> Constellation lines {{ showConstellations ? '(on)' : '(off)' }}
+          <li><button type="button" class="hamb-menu-item" :aria-pressed="showConstellations" @click="toggleConstellations">
+            <font-awesome-icon icon="star" /> <span class="hamb-menu-label">Constellation lines</span>
+            <font-awesome-icon icon="check" class="menu-check" :class="{ on: showConstellations }" />
           </button></li>
-          <li><button type="button" class="hamb-menu-item" @click="toggleFootprints">
-            <font-awesome-icon icon="ring" /> Image footprints {{ showFootprints ? '(on)' : '(off)' }}
+          <li><button type="button" class="hamb-menu-item" :aria-pressed="showFootprints" @click="toggleFootprints">
+            <font-awesome-icon icon="vector-square" /> <span class="hamb-menu-label">Image outlines</span>
+            <font-awesome-icon icon="check" class="menu-check" :class="{ on: showFootprints }" />
           </button></li>
           <!-- COSMOS-Web galaxy field disabled for now (module + assets remain; re-add to re-enable):
           <li><button type="button" class="hamb-menu-item" @click="toggleCosmosWeb">
@@ -78,14 +113,14 @@
           </button></li>
           -->
           <li><button type="button" class="hamb-menu-item" @click="openLink('https://www.rocketcenter.com/INTUITIVEPlanetarium/InteractiveAstronomy', 'INTUITIVE Planetarium')">
-            <font-awesome-icon icon="rocket" /> <span class="hamb-menu-label"><em>INTUITIVE</em><sup>®</sup>&nbsp;Planetarium</span>
+            <font-awesome-icon icon="building-columns" /> <span class="hamb-menu-label"><em>INTUITIVE</em><sup>®</sup>&nbsp;Planetarium</span>
           </button></li>
           <li><button type="button" class="hamb-menu-item" @click="openLink('https://worldwidetelescope.org/home/', 'WorldWide Telescope')">
             <img alt="WWT" class="hamb-menu-logo" src="./assets/logo_wwt.png" width="16" height="16" />
             <span class="hamb-menu-label">WorldWide Telescope</span>
           </button></li>
           <li><button type="button" class="hamb-menu-item" @click="openLink('https://webbtelescope.org/', 'James Webb Space Telescope')">
-            <font-awesome-icon icon="rocket" /> About JWST
+            <font-awesome-icon icon="satellite" /> About JWST
           </button></li>
           <li v-if="kioskMode"><button type="button" class="hamb-menu-item" @click="showHomeQR">
             <font-awesome-icon icon="globe" /> Get this on your phone
@@ -101,7 +136,7 @@
           :places="galleryPlaces"
           :selected-key="selectedKey"
           :kiosk="kioskMode"
-          @select="onSelectPlace"
+          @select="onGallerySelect"
           @visible-change="visibleOrder = $event"
         ></image-gallery>
       </div>
@@ -165,6 +200,13 @@
               </ul>
             </div>
 
+            <div class="intro-actions">
+              <button type="button" class="intro-action primary" @click="closeIntro">Start exploring</button>
+              <button v-if="tourPlaces.length" type="button" class="intro-action" @click="startTour">
+                <font-awesome-icon icon="route" /> Take the guided tour
+              </button>
+            </div>
+
             <div class="intro-credits">
               Interactive by
               <a href="https://twitter.com/ADavidWeigel" target="_blank" rel="noopener noreferrer" class="links">A. David Weigel</a>,
@@ -199,12 +241,30 @@
 
       <!-- Description / credits panel -->
       <transition name="fade">
-        <div class="description-panel" v-if="selectedPlace && showDescription">
+        <div class="description-panel" v-if="selectedPlace && showDescription" aria-labelledby="desc-title">
           <button class="desc-close" @click="showDescription = false" aria-label="Close"><font-awesome-icon icon="times" /></button>
+          <!-- Guided tour (audit J8): caption + Back/Next/Exit above the
+               regular description. -->
+          <div v-if="tourActive" class="tour-strip">
+            <div class="tour-head">
+              <span class="tour-label"><font-awesome-icon icon="route" /> Guided tour · {{ tourIdx + 1 }} of {{ tourPlaces.length }}</span>
+              <button type="button" class="tour-exit" @click="stopTour">Exit tour</button>
+            </div>
+            <p class="tour-caption">{{ tourCaption }}</p>
+            <div class="tour-nav">
+              <button type="button" class="tour-btn" :disabled="tourIdx === 0" @click="tourStep(-1)">
+                <font-awesome-icon icon="chevron-left" /> Back
+              </button>
+              <button type="button" class="tour-btn primary" @click="tourStep(1)">
+                {{ tourIdx === tourPlaces.length - 1 ? 'Finish' : 'Next' }} <font-awesome-icon icon="chevron-right" />
+              </button>
+            </div>
+          </div>
           <div class="desc-head">
             <!-- P3.4: step to the previous image in the gallery's current
                  visible list (wraparound). Also bound to ArrowLeft. -->
             <button
+              v-if="!tourActive"
               class="desc-step desc-step-prev"
               aria-label="Previous image"
               v-tip="'Previous image'"
@@ -212,19 +272,27 @@
             >
               <font-awesome-icon icon="chevron-left" />
             </button>
-            <img
+            <button
               v-if="mode3D && selectedPlace"
-              class="desc-thumb no-select"
-              :src="markerThumb(selectedPlace)"
-              :alt="selectedName"
+              type="button"
+              class="desc-thumb-btn"
+              aria-label="View this image on the sky"
               v-tip="'View in 2D'"
-              @load="onDescThumbLoad"
-              @click="onDescThumbClick"
-            />
-            <h2 class="desc-title">{{ selectedName }}</h2>
+              @click="viewIn2D"
+            >
+              <img
+                class="desc-thumb no-select"
+                :src="markerThumb(selectedPlace)"
+                alt=""
+                crossorigin="anonymous"
+                @load="onDescThumbLoad"
+              />
+            </button>
+            <h2 id="desc-title" class="desc-title">{{ selectedName }}</h2>
             <!-- P3.4: step to the next image (wraparound). Also bound to
                  ArrowRight. margin pushes it clear of the absolute .desc-close X. -->
             <button
+              v-if="!tourActive"
               class="desc-step desc-step-next"
               aria-label="Next image"
               v-tip="'Next image'"
@@ -235,21 +303,35 @@
           </div>
           <p class="desc-distance" v-if="distanceLabel">{{ distanceLabel }}</p>
           <p class="desc-text">{{ currentMeta.description || 'No description available for this image.' }}</p>
-          <p class="desc-credits" v-if="currentMeta.credits || currentMeta.creditsUrl">
+          <p class="desc-credits" v-if="currentMeta.credits || safeCreditsUrl">
             <em>Credits: {{ currentMeta.credits }}</em>
             <a
-              v-if="currentMeta.creditsUrl"
-              :href="currentMeta.creditsUrl"
+              v-if="safeCreditsUrl"
+              :href="safeCreditsUrl"
               target="_blank"
               rel="noopener noreferrer"
               class="links desc-learn"
-            ><font-awesome-icon icon="rocket" /> Learn more</a>
+            ><font-awesome-icon icon="arrow-up-right-from-square" /> Learn more</a>
           </p>
-          <!-- In kiosk mode this control lives in the top-center bar instead
-               (easier to discover on the exhibit screen). -->
-          <button v-if="mode3D && !kioskMode" class="desc-view2d" @click="set2DMode(selectedPlace)">
-            <font-awesome-icon icon="image" /> View in 2D
-          </button>
+          <div class="desc-actions">
+            <!-- In kiosk mode "View in 2D" lives in the top-center bar instead
+                 (easier to discover on the exhibit screen). -->
+            <button v-if="mode3D && !kioskMode" type="button" class="desc-view2d" @click="viewIn2D">
+              <font-awesome-icon icon="image" /> View in 2D
+            </button>
+            <button
+              v-if="!mode3D && !compareActive && compareCandidates.length"
+              type="button"
+              class="desc-view2d"
+              v-tip="'Blend with another image of the same target'"
+              @click="startCompare()"
+            >
+              <font-awesome-icon icon="table-columns" /> Compare ({{ compareCandidates.length }})
+            </button>
+            <button v-if="!kioskMode" type="button" class="desc-view2d" @click="shareView">
+              <font-awesome-icon icon="share-nodes" /> {{ shareStatus || 'Share' }}
+            </button>
+          </div>
         </div>
       </transition>
 
@@ -259,13 +341,13 @@
         class="marker-tip"
         :style="{ left: hover3D.x + 'px', top: hover3D.y + 'px' }"
       >
-        <img v-if="hover3D.thumb" class="marker-tip-thumb" :src="hover3D.thumb" :alt="hover3D.name" />
-        <span class="marker-tip-name">{{ hover3D.name }}</span>
+        <img v-if="hover3D.thumb" class="marker-tip-thumb" :src="hover3D.thumb" alt="" />
+        <span class="marker-tip-name">{{ hover3D.name }}<span v-if="hover3D.hint" class="marker-tip-hint">{{ hover3D.hint }}</span></span>
       </div>
 
       <!-- Crossfade opacity slider -->
       <transition name="fade">
-        <div class="crossfade-bar" v-if="showCrossfade && !mode3D">
+        <div class="crossfade-bar" v-if="showCrossfade && !mode3D && !compareActive">
           <span class="crossfade-text">JWST opacity</span>
           <input
             class="opacity-range"
@@ -275,6 +357,36 @@
             v-model.number="foregroundOpacity"
             aria-label="JWST image opacity"
           />
+        </div>
+      </transition>
+
+      <!-- Compare bar (audit J9): blend the current image (left end of the
+           slider) with another image of the same target (right end). -->
+      <transition name="fade">
+        <div class="compare-bar" v-if="compareActive && !mode3D">
+          <span class="compare-name" :title="selectedName">{{ selectedName }}</span>
+          <input
+            class="opacity-range"
+            type="range"
+            min="0"
+            max="100"
+            v-model.number="compareOpacity"
+            aria-label="Blend between the two images"
+          />
+          <select
+            class="compare-select"
+            :value="compareKey"
+            aria-label="Image to compare with"
+            @change="onCompareSelect"
+          >
+            <option v-for="p in compareCandidates" :key="placeKey(p)" :value="placeKey(p)">{{ p.get_name() }}</option>
+          </select>
+          <button type="button" class="compare-icon-btn" aria-label="Make the compared image the main one" v-tip="'Swap'" @click="swapCompare">
+            <font-awesome-icon icon="right-left" />
+          </button>
+          <button type="button" class="compare-icon-btn" aria-label="Exit compare" v-tip="'Exit compare'" @click="exitCompare">
+            <font-awesome-icon icon="times" />
+          </button>
         </div>
       </transition>
 
@@ -289,7 +401,7 @@
         <button
           v-if="mode3D"
           class="desc-view2d kiosk-view2d"
-          @click="set2DMode(selectedPlace || undefined)"
+          @click="viewIn2D"
         >
           <font-awesome-icon icon="image" /> View in 2D
         </button>
@@ -304,6 +416,12 @@
         <a href="https://worldwidetelescope.org/home/" target="_blank" rel="noopener noreferrer">
           <img alt="WWT" src="./assets/logo_wwt.png" />
         </a>
+      </div>
+
+      <!-- Staff-visible warning when the take-home QR would point somewhere a
+           visitor's phone can't reach (audit J2). Set VUE_APP_PUBLIC_URL. -->
+      <div v-if="kioskHomeUrlProblem" class="kiosk-staff-warning" role="status">
+        <font-awesome-icon icon="triangle-exclamation" /> {{ kioskHomeUrlProblem }}
       </div>
 
       <!-- Attract-loop hint: pulsing "touch to explore" while auto-cycling. -->
@@ -323,8 +441,8 @@
 <script lang="ts">
 import { defineComponent, markRaw } from "vue";
 import {
-  Folder, Place, ImageSetLayer, SpreadSheetLayer,
-  Constellations, Coordinates, Grids, LayerManager, Texture, WWTControl,
+  Folder, Place, ImageSetLayer,
+  Constellations, Coordinates, Grids, LayerManager, Texture, Vector3d, WWTControl,
 } from "@wwtelescope/engine";
 import { applyImageSetLayerSetting } from "@wwtelescope/engine-helpers";
 import { MiniDSBase, BackgroundImageset } from "@cosmicds/vue-toolkit";
@@ -332,12 +450,11 @@ import { MiniDSBase, BackgroundImageset } from "@cosmicds/vue-toolkit";
 // also applies side-effect patches (TILE_QUALITY_SCALE sharper tiles, the
 // constellation-figure fade shims) on load. See HANDOFF.md §9.
 import {
-  drawSpreadSheetLayer, drawSkyOverlays, initializeConstellationNames,
+  drawSkyOverlays, initializeConstellationNames,
   drawGalaxyImage, layerManagerDraw, prebuildFigures3D, zoom,
   notifyConstellationModeChange, gotoTargetFullHacked, setConstellationFiguresTarget,
   prefetchCosmos,
 } from "./wwt-hacks";
-import { installGalaxy3D } from "./galaxy3d";
 import { prewarmGalaxySprites } from "./galaxy-sprites";
 import { croppedTileUrl } from "./thumb-crop";
 import { installMarkerCloud, setMarkerCloudOpacity, setMarkerHighlight, MarkerRow } from "./marker-renderer";
@@ -348,13 +465,17 @@ import { typeMetaForName } from "./jwstTypes";
 import { placeKey } from "./placeKey";
 import KioskQrModal from "./KioskQrModal.vue";
 import {
-  installKioskGuards, scheduleDailyReload, createIdleWatcher, IdleWatcher,
+  installKioskGuards, scheduleDailyReload, createIdleWatcher, IdleWatcher, isHttpUrl,
   KIOSK_RELOAD_HOUR, KIOSK_IDLE_MS, KIOSK_ATTRACT_DWELL_MS, KIOSK_ATTRACT_FALLBACK_STEP_MS,
   KIOSK_ATTRACT_3D_EVERY, KIOSK_ATTRACT_3D_HOLD_MS, KIOSK_ATTRACT_3D_FLYOUT_S,
   KIOSK_ATTRACT_3D_OVERVIEW_DWELL_MS, KIOSK_ATTRACT_3D_NEXT_HOLD_MS,
 } from "./kiosk";
-import { urlWithoutParams, numberParam } from "./urlParams";
+import { urlWithoutParams, numberParam, stringParam } from "./urlParams";
 import { statsInit, statsSessionStart, statsSessionEnd, statsTrack } from "./kioskStats";
+import {
+  withTimeout, fetchText, hasWebGL, describeBootError, scheduleKioskRetry, markBootSucceeded,
+} from "./boot";
+import { DEBUG } from "./debug";
 
 interface ImageMeta {
   description: string;
@@ -371,6 +492,36 @@ function directChildText(el: Element, tag: string): string {
     if (child.tagName === tag) { return child.textContent?.trim() ?? ""; }
   }
   return "";
+}
+
+// Parse descriptions/credits from the catalog WTML text (the engine drops
+// ImageSet/Description). In the current catalog, <Description> is a child of
+// <Place> while Credits/CreditsUrl live on the nested <ImageSet>; the older
+// catalog carried Description on the ImageSet instead, so fall back to that.
+// Keyed like placeKey.ts (`${name}::${url}`) because the catalog has duplicate
+// Place Names (same object, two crops); falls back to the bare name only when
+// a Place has no ImageSet Url.
+function parseWtmlMetadata(text: string): Record<string, ImageMeta> {
+  const doc = new DOMParser().parseFromString(text, "text/xml");
+  if (doc.querySelector("parsererror")) {
+    throw new Error("Image catalog is not valid XML");
+  }
+  const map: Record<string, ImageMeta> = {};
+  doc.querySelectorAll("Place").forEach((placeEl) => {
+    const name = placeEl.getAttribute("Name");
+    if (!name) { return; }
+    const imgEl = placeEl.querySelector("ImageSet");
+    const isetUrl = imgEl?.getAttribute("Url") ?? "";
+    const key = isetUrl ? `${name}::${isetUrl}` : name;
+    const description = directChildText(placeEl, "Description")
+      || (imgEl ? directChildText(imgEl, "Description") : "");
+    map[key] = {
+      description,
+      credits: imgEl ? directChildText(imgEl, "Credits") : "",
+      creditsUrl: imgEl ? directChildText(imgEl, "CreditsUrl") : "",
+    };
+  });
+  return map;
 }
 
 // One JWST image's 3D marker: its place + precomputed world-space (AU) position
@@ -422,6 +573,23 @@ function formatLy(ly: number): string {
 // batch's new names here (newest first). Matched via normalizeName, so exact
 // punctuation/casing isn't required.
 const FEATURED_ORDER: string[] = [
+  // October 2026 batch (esawebb.org releases weic2616–weic2620, potm2607–potm2609).
+  "NGC 7129 (NIRCam image)",
+  "IC 348 Crop: Central star cluster",
+  "IC 348 Crop: Star embedded in a nebula",
+  "IC 348 Crop: Stars and faint outflows",
+  "IC 348 Crop: Spiral galaxies",
+  "IC 348 Crop: Gravitational lensing",
+  "IRS 3 Field (NIRCam and MIRI image)",
+  "IRS 3 Field (NIRCam image)",
+  "IRS 3 Field (MIRI image)",
+  "Lion Nebula (NIRCam + MIRI image)",
+  "Lion Nebula (MIRI image)",
+  "Galaxies in a cosmic house of mirrors",
+  "Striking star clusters and irregular clumps",
+  "Starstruck image of Arp 263",
+  "Arp 263 (crop)",
+  "Webb opens a Treasure Chest filled with stars",
   // July 2026 batch (Centaurus A wide-field leads, per request).
   "Centaurus A (MIRI + NIRCam image wide-field view)",
   "Centaurus A (MIRI + NIRCam image)",
@@ -436,6 +604,45 @@ const FEATURED_ORDER: string[] = [
   "Abell S1063 galaxy cluster",
   "A cosmic construction project",
 ];
+// Guided tour (audit J8 / backlog P3.7a): the approved 16-stop list, in order,
+// each with a short caption. Names are matched through normalizeName, so curly
+// vs straight quotes don't matter; a stop whose name isn't in the catalog is
+// skipped rather than breaking the tour.
+const TOUR_STOPS: { name: string; caption: string }[] = [
+  { name: "NIRCam Image of the “Cosmic Cliffs” in Carina",
+    caption: "The edge of a giant gas cavity in the Carina Nebula, where hot young stars are carving out the clouds that gave birth to them." },
+  { name: "Webb Takes a Stunning, Star-Filled Portrait of the Pillars of Creation",
+    caption: "The famous Pillars of Creation in the Eagle Nebula. Webb's infrared view sees through the dust to newly forming stars." },
+  { name: "Rho Ophiuchi cloud complex",
+    caption: "The closest star-forming region to Earth, about 390 light-years away. About 50 young Sun-like stars light up the clouds." },
+  { name: "Protostar L1527",
+    caption: "An hourglass of gas lit by a star still forming at its waist, less than 100,000 years old." },
+  { name: "Webb inspects dusty debris disc around Fomalhaut",
+    caption: "Rings of dust around the nearby star Fomalhaut: the leftover building material of a planetary system." },
+  { name: "Exoplanet Epsilon Indi Ab (MIRI image)",
+    caption: "A cold giant planet imaged directly, orbiting a star just 12 light-years away." },
+  { name: "Southern Ring Nebula (NIRCam Image)",
+    caption: "The glowing shells of gas cast off by a dying star, about 2,500 light-years away." },
+  { name: "Crab Nebula (MIRI and NIRCam image)",
+    caption: "The expanding wreck of a star that exploded in 1054, seen and recorded by astronomers on Earth at the time." },
+  { name: "Sagittarius C (NIRCam Image)",
+    caption: "A crowded star-forming region near the black hole at the centre of our Milky Way." },
+  { name: "Tarantula Nebula (NIRCam Image)",
+    caption: "The largest stellar nursery in our galactic neighbourhood, in the Large Magellanic Cloud." },
+  { name: "Webb Inspects the Heart of the Phantom Galaxy",
+    caption: "M74, a near-perfect spiral galaxy. Webb's infrared view traces the gas and dust in its arms." },
+  { name: "Stephan’s Quintet (NIRCam + MIRI Imaging)",
+    caption: "Five galaxies in a close group, four of them interacting and tearing at each other's gas and stars." },
+  { name: "Cartwheel Galaxy (JWST NIRCam and MIRI Composite Image)",
+    caption: "A galaxy reshaped into a ring after a smaller galaxy plunged straight through it." },
+  { name: "Webb Uncovers New Details in Pandora’s Cluster",
+    caption: "Abell 2744, a pile-up of galaxy clusters whose gravity magnifies even more distant galaxies behind it." },
+  { name: "Webb’s First Deep Field (NIRCam Image)",
+    caption: "Thousands of galaxies in a patch of sky the size of a grain of sand held at arm's length." },
+  { name: "Webb finds most distant known galaxy (JADES-GS-z14-0 environment NIRCam image)",
+    caption: "Light from one of these galaxies left it about 290 million years after the Big Bang." },
+];
+
 // name → rank (lower = earlier). Featured names get 0..n-1; everything else
 // gets a large rank so it stays after, preserving catalog order via a stable sort.
 const FEATURED_RANK: Map<string, number> = new Map(
@@ -455,6 +662,10 @@ const FADE_FLOOR = 0.02;
 // would be near-instant; we stretch both the camera move and the fade to at
 // least this long so a same-spot reselect still reads as a deliberate transition.
 const MIN_SLEW_MS = 2500;
+// Ceiling on image-to-image slews (audit J17). The engine's predicted time for
+// a cross-sky hop can run 15–20 s, which is long for a gallery click and longer
+// for a museum visitor; `duration` compresses the camera move to fit.
+const MAX_SLEW_MS = 6000;
 // "Gentle" 3D→2D arrival (desc-thumbnail click): jump instantly to the target's
 // RA/Dec at GENTLE_ZOOM_BACKOFF × its zoom, then ease the remaining zoom-in
 // over GENTLE_SLEW_MS while the image fades in — no cross-sky slew.
@@ -502,6 +713,33 @@ const MARKER_COLOR_HEX = "#F0AB52";
 // gallery badges); when false, every marker is the uniform JWST gold above.
 // Flip this one line to swap back to the all-gold look.
 const MARKER_COLOR_BY_TYPE = true;
+
+// Image-compare (audit J9): another catalog image counts as "the same target"
+// when its centre lies within this fraction of the current image's field.
+const COMPARE_MATCH_FRACTION = 0.5;
+const COMPARE_MAX_CANDIDATES = 8;
+
+// Coarse pointers (touch) get a larger marker hit radius and tap-to-preview
+// (audit J16).
+const IS_COARSE_POINTER = window.matchMedia("(pointer: coarse)").matches;
+
+// Angular separation in degrees between two RA/Dec positions given in radians.
+function separationDeg(ra1: number, dec1: number, ra2: number, dec2: number): number {
+  const c = Math.sin(dec1) * Math.sin(dec2) + Math.cos(dec1) * Math.cos(dec2) * Math.cos(ra1 - ra2);
+  return Math.acos(Math.max(-1, Math.min(1, c))) * R2D;
+}
+
+// Project a solar-system world point (AU, the frame WWT draws in) to canvas
+// pixels. Calls the engine's pick-space transform directly: as of engine 7.40,
+// getScreenPointForCoordinates swaps y/z in solar-system mode, so going through
+// it would make the hit-test depend on the engine version.
+function worldToScreen(x: number, y: number, z: number): { x: number; y: number } | null {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ctl = WWTControl.singleton as any;
+  const rc = ctl?.renderContext;
+  if (!rc) { return null; }
+  return ctl.transformWorldPointToPickSpace(Vector3d.create(x, y, z), rc.width, rc.height);
+}
 
 // Background sky surveys, ordered high-energy → infrared. Display name → WWT imageset name.
 // These resolve from BackgroundImagery_v2.wtml plus WWT built-ins.
@@ -632,10 +870,47 @@ export default defineComponent({
       // can't read the survey back from it.
       saved2DBackground: "" as string,
       // Hover tooltip over a 3D marker (thumbnail + name, near the cursor).
-      hover3D: { show: false, name: "", thumb: "", x: 0, y: 0 },
+      hover3D: { show: false, name: "", thumb: "", hint: "", x: 0, y: 0 },
       hoverRaf: 0,
       pendingHoverEvent: null as PointerEvent | null,
       pointerDownAt: null as { x: number; y: number } | null,
+      // Touch: the first tap on a 3D marker previews it, a second tap on the
+      // same marker opens it (audit J16).
+      pendingTapName: "",
+
+      // Startup failure card (audit E3). bootRetryable is false only when the
+      // browser can't do WebGL at all; bootRetryInS counts the kiosk auto-retry.
+      bootError: "",
+      bootRetryable: true,
+      bootRetryInS: 0,
+
+      // 3D downloads (Gaia Milky Way, SDSS cosmos, galaxy sprites, 3D figures)
+      // start on the first sign of 3D intent rather than for every visitor
+      // (audit J3). Timer handles are cleared in beforeUnmount.
+      warmed3D: false,
+      warm3DTimers: [] as number[],
+
+      // Deep links (audit E11): ?image=<name> opens on that image and
+      // ?mode=3d starts in the 3D view. The URL is kept in sync as the visitor
+      // browses so the address bar and Share button always point here.
+      deepLinkImage: stringParam("image") ?? "",
+      initialMode3D: stringParam("mode") === "3d",
+      shareStatus: "",
+
+      // Guided tour (audit J8).
+      tourActive: false,
+      tourIdx: 0,
+
+      // Compare mode (audit J9): a second image of the same target, layered
+      // over the current one and blended with its own slider.
+      compareActive: false,
+      comparePlace: null as Place | null,
+      compareLayer: null as ImageSetLayer | null,
+      compareOpacity: 50,
+      compareSeq: 0,
+
+      // Polite screen-reader announcements (selection changes, tour steps).
+      liveMessage: "",
     };
   },
 
@@ -685,58 +960,22 @@ export default defineComponent({
       watcher.start();
       this.kioskIdleWatcher = watcher;
       this.kioskCleanups.push(() => watcher.stop());
+
+      // Measure the top thumbnail strip rather than assuming its height (J7):
+      // filter chips can wrap to a second row on a narrow exhibit screen.
+      const root = this.$el as HTMLElement;
+      const strip = root.querySelector(".gallery-wrap");
+      const main = root.querySelector("#main-content") as HTMLElement | null;
+      if (strip && main && "ResizeObserver" in window) {
+        const ro = new ResizeObserver(() => {
+          main.style.setProperty("--kiosk-strip-h", `${strip.getBoundingClientRect().height}px`);
+        });
+        ro.observe(strip);
+        this.kioskCleanups.push(() => ro.disconnect());
+      }
     }
 
-    this.waitForReady().then(async () => {
-      this.setClockSync(false);
-
-      // Debug/verification hook (also handy in the console): the live component
-      // and the WWT control singleton (for projecting markers from the console).
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (window as any).jwstApp = this;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (window as any).WWTControl = WWTControl;
-
-      // Apply the 3D (solar-system cosmos) engine patches up front so the first
-      // toggle into 3D is instant. Stays in 2D until the user toggles.
-      this.install3DHacks();
-
-      // Parse descriptions/credits straight from the WTML (the engine drops ImageSet/Description).
-      this.loadMetadata(this.wtml).then(() => { this.metadataLoaded = true; });
-
-      // Load the JWST collection and populate the gallery.
-      this.loadImageCollection({ url: this.wtml, loadChildFolders: true }).then((folder) => {
-        this.imagesetFolder = folder;
-        this.places = this.extractPlaces(folder);
-        this.layersLoaded = true;
-
-        if (this.places.length > 0) {
-          // Park the camera zoomed out and centered on the start target, then
-          // fly in once the intro is dismissed (handles a fast intro dismiss
-          // too, via maybeFlyToStart).
-          this.frameStart();
-          this.maybeFlyToStart();
-          // Build the (initially hidden) 3D markers for Phase 2.
-          this.buildMarkers();
-          // Build the (initially hidden) 2D image-footprint outlines.
-          this.buildFootprints();
-          // Warm the start image's layer now (rather than waiting for the
-          // intro to be dismissed) so the loading screen can gate on it.
-          this.warmStartLayer();
-        } else {
-          this.startLayerLoaded = true;
-        }
-      });
-
-      // Load background sky surveys, then set the default.
-      this.loadImageCollection({ url: this.bgWtml, loadChildFolders: true }).then(() => {
-        this.curBackgroundImagesetName = this.bgName;
-        this.bgSurveyLoaded = true;
-      });
-
-      // wwtZoomDeg can lag a tick on first load.
-      this.positionSetTimer = window.setTimeout(() => { this.positionSet = true; }, 150);
-    });
+    this.boot();
   },
 
   beforeUnmount() {
@@ -752,6 +991,7 @@ export default defineComponent({
     window.clearInterval(this.figures3DPollTimer);
     window.clearTimeout(this.figures3DGiveUpTimer);
     window.clearTimeout(this.set2DModeTimer);
+    for (const t of this.warm3DTimers) { window.clearTimeout(t); }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     delete (window as any).jwstApp;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -760,7 +1000,7 @@ export default defineComponent({
 
   computed: {
     isLoading(): boolean {
-      return !this.ready;
+      return !this.ready && !this.bootError;
     },
     ready(): boolean {
       return this.layersLoaded && this.positionSet && this.metadataLoaded
@@ -801,14 +1041,84 @@ export default defineComponent({
     },
     // The image we open on: startImage by name if it matches, else the first.
     // (Duplicate names resolve to whichever comes first in the catalog.)
+    // A ?image= deep link wins over the configured startImage. Matched via
+    // normalizeName, so quotes/case/punctuation in a shared link don't matter.
     startPlace(): Place | null {
       if (this.places.length === 0) { return null; }
-      if (this.startImage) {
-        const match = this.places.find((p) => p.get_name() === this.startImage);
+      for (const wanted of [this.deepLinkImage, this.startImage]) {
+        if (!wanted) { continue; }
+        const match = this.placeByName(wanted);
         if (match) { return match; }
-        console.warn(`startImage "${this.startImage}" not found in collection; using first image.`);
+        console.warn(`Image "${wanted}" not found in collection.`);
       }
       return this.places[0];
+    },
+    // Tour stops resolved to catalog places (missing names are skipped).
+    tourPlaces(): { place: Place; caption: string }[] {
+      const out: { place: Place; caption: string }[] = [];
+      for (const stop of TOUR_STOPS) {
+        const place = this.placeByName(stop.name);
+        if (place) { out.push({ place, caption: stop.caption }); }
+      }
+      return out;
+    },
+    tourCaption(): string {
+      return this.tourActive ? (this.tourPlaces[this.tourIdx]?.caption ?? "") : "";
+    },
+    // Other catalog images of (roughly) the same patch of sky as the selected
+    // one, nearest first: the candidates for compare mode.
+    compareCandidates(): Place[] {
+      const cur = this.selectedPlace;
+      if (!cur || this.mode3D) { return []; }
+      const iset = cur.get_studyImageset() ?? cur.get_backgroundImageset();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const field = (iset as any)?.get_baseTileDegrees?.() ?? 0;
+      const limit = Math.max(0.02, field * COMPARE_MATCH_FRACTION);
+      const c = this.placeCenter(cur);
+      const key = placeKey(cur);
+      return this.places
+        .filter((p) => placeKey(p) !== key)
+        .map((p) => {
+          const pc = this.placeCenter(p);
+          return { p, sep: separationDeg(c.raRad, c.decRad, pc.raRad, pc.decRad) };
+        })
+        .filter((x) => x.sep <= limit)
+        .sort((a, b) => a.sep - b.sep)
+        .slice(0, COMPARE_MAX_CANDIDATES)
+        .map((x) => x.p);
+    },
+    compareName(): string {
+      return this.comparePlace ? this.comparePlace.get_name() : "";
+    },
+    compareKey(): string {
+      return this.comparePlace ? placeKey(this.comparePlace) : "";
+    },
+    // Only http(s) credit links are rendered (audit E6): the URL comes from the
+    // WTML, and Vue doesn't block javascript: URLs in :href.
+    safeCreditsUrl(): string {
+      const u = this.currentMeta.creditsUrl;
+      return u && isHttpUrl(u) ? u : "";
+    },
+    // Accessible name for the WWT canvas (audit J14).
+    canvasLabel(): string {
+      if (this.mode3D) {
+        return "3D view of where each Webb image sits in space, with the Milky Way for scale";
+      }
+      return this.selectedName
+        ? `Sky view showing the Webb image: ${this.selectedName}`
+        : "Sky view";
+    },
+    // In kiosk mode the take-home QR must point at a public https URL that
+    // isn't this machine; otherwise staff see a warning badge (audit J2).
+    kioskHomeUrlProblem(): string {
+      if (!this.kioskMode) { return ""; }
+      let u: URL;
+      try { u = new URL(this.homeUrl); } catch { return "Take-home QR URL is invalid"; }
+      if (u.protocol !== "https:") { return "Take-home QR URL is not https"; }
+      if (/^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(u.hostname)) {
+        return "Take-home QR URL points at this machine or the local network";
+      }
+      return "";
     },
     currentMeta(): ImageMeta {
       return this.metaByName[this.selectedKey] ?? { description: "", credits: "", creditsUrl: "" };
@@ -843,9 +1153,15 @@ export default defineComponent({
     // kioskHomeUrl (set before museum install); otherwise derive it from the
     // current URL with the kiosk params stripped. The utm_source=kiosk tag lets
     // the public site's analytics count real phone scans (not just modal opens).
+    // Once a guest has picked an image, the QR carries it (?image=) so they
+    // can "take this view home" (audit E11).
     homeUrl(): string {
-      const base = this.kioskHomeUrl || urlWithoutParams("kiosk", "kioskIdle", "kioskStats");
-      return base + (base.includes("?") ? "&" : "?") + "utm_source=kiosk";
+      const base = this.kioskHomeUrl
+        || urlWithoutParams("kiosk", "kioskIdle", "kioskStats", "kiosk3dEvery", "tileq", "image", "mode", "debug");
+      const params = new URLSearchParams();
+      if (this.selectedPlace && !this.attractMode) { params.set("image", this.selectedName); }
+      params.set("utm_source", "kiosk");
+      return base + (base.includes("?") ? "&" : "?") + params.toString();
     },
     curBackgroundImagesetName: {
       get(): string {
@@ -874,8 +1190,41 @@ export default defineComponent({
     },
   },
 
+  watch: {
+    ready(isReady: boolean): void {
+      if (!isReady) { return; }
+      markBootSucceeded();
+      this.labelCanvas();
+      if (this.initialMode3D && !this.mode3D) { this.set3DMode(); }
+      if (this.kioskHomeUrlProblem) { console.warn(`[jwst] kiosk: ${this.kioskHomeUrlProblem} (${this.homeUrl})`); }
+    },
+    canvasLabel(): void {
+      this.labelCanvas();
+    },
+    // Keep the address bar pointing at the current view (not in kiosk mode,
+    // where the URL carries the kiosk flags and must survive the 3 AM reload).
+    selectedKey(): void {
+      this.syncUrl();
+    },
+    mode3D(): void {
+      this.syncUrl();
+    },
+    compareOpacity(v: number): void {
+      if (this.compareLayer) { applyImageSetLayerSetting(this.compareLayer, ["opacity", v / 100]); }
+    },
+  },
+
   methods: {
+    placeKey,
+
+    // Engine objects are marked raw so Vue doesn't wrap their whole object
+    // graphs in proxies (audit E13): identity checks against engine-internal
+    // references keep working and get_*() calls skip the proxy traps.
     extractPlaces(folder: Folder): Place[] {
+      return markRaw(this.collectPlaces(folder).map((p) => markRaw(p)));
+    },
+
+    collectPlaces(folder: Folder): Place[] {
       const out: Place[] = [];
       for (const child of folder.get_children() ?? []) {
         if (child instanceof Place) {
@@ -884,44 +1233,142 @@ export default defineComponent({
             out.push(child);
           }
         } else if (child instanceof Folder) {
-          out.push(...this.extractPlaces(child));
+          out.push(...this.collectPlaces(child));
         }
       }
       return out;
     },
 
-    async loadMetadata(url: string): Promise<void> {
-      try {
-        const text = await fetch(url).then((r) => r.text());
-        const doc = new DOMParser().parseFromString(text, "text/xml");
-        const map: Record<string, ImageMeta> = {};
-        // In the current catalog, <Description> is a child of <Place> while
-        // Credits/CreditsUrl live on the nested <ImageSet>. (The older catalog
-        // carried Description on the ImageSet instead — fall back to that.)
-        // The catalog has 11 duplicate Place Names (same object, two crops),
-        // so keying purely by Name would let one duplicate's description
-        // silently overwrite the other's. Key by the same content-derived
-        // `${name}::${url}` used by placeKey.ts (falls back to bare name if
-        // this Place has no ImageSet Url, matching the old behavior for that
-        // edge case only).
-        doc.querySelectorAll("Place").forEach((placeEl) => {
-          const name = placeEl.getAttribute("Name");
-          if (!name) { return; }
-          const imgEl = placeEl.querySelector("ImageSet");
-          const isetUrl = imgEl?.getAttribute("Url") ?? "";
-          const key = isetUrl ? `${name}::${isetUrl}` : name;
-          const description = directChildText(placeEl, "Description")
-            || (imgEl ? directChildText(imgEl, "Description") : "");
-          map[key] = {
-            description,
-            credits: imgEl ? directChildText(imgEl, "Credits") : "",
-            creditsUrl: imgEl ? directChildText(imgEl, "CreditsUrl") : "",
-          };
-        });
-        this.metaByName = map;
-      } catch (err) {
-        console.warn("Could not parse JWST metadata:", err);
+    // Startup sequence (audit E3 + J5). Every stage is time-boxed and any
+    // failure shows the error card (with Retry) instead of an endless spinner.
+    // The catalog WTML is fetched exactly once: its text feeds both the
+    // description/credits parser and, via a blob: URL (which the engine's URL
+    // rewriter passes through untouched), the engine's own folder loader.
+    async boot(): Promise<void> {
+      if (!hasWebGL()) {
+        this.bootError = "This browser can't display WebGL graphics, which WorldWide Telescope needs. "
+          + "Try an up-to-date version of Chrome, Edge, Firefox or Safari.";
+        this.bootRetryable = false;
+        return;
       }
+      try {
+        await withTimeout(this.waitForReady(), "Starting the sky viewer", 30_000);
+        this.setClockSync(false);
+
+        if (DEBUG) {
+          // Console hooks: the live component and the WWT control singleton
+          // (for projecting markers from the console). ?debug=1 only (E7).
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (window as any).jwstApp = this;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (window as any).WWTControl = WWTControl;
+        }
+
+        // Patch the engine for 3D up front so the first toggle is instant.
+        // Only cheap prototype patches run here; the 3D downloads wait for a
+        // sign of interest (warm3D, audit J3).
+        this.install3DHacks();
+        if (this.kioskMode || this.initialMode3D) { this.warm3D(); }
+
+        // Background sky surveys are a nice-to-have: if their WTML fails we
+        // keep the engine's default background rather than blocking the app.
+        withTimeout(this.loadImageCollection({ url: this.bgWtml, loadChildFolders: true }), "Loading sky surveys")
+          .then(() => { this.curBackgroundImagesetName = this.bgName; })
+          .catch((err) => { console.warn("[jwst] sky surveys failed to load; keeping the default background", err); })
+          .finally(() => { this.bgSurveyLoaded = true; });
+
+        const text = await withTimeout(fetchText(this.wtml), "Loading the image catalog");
+        this.metaByName = parseWtmlMetadata(text);
+        this.metadataLoaded = true;
+
+        const blobUrl = URL.createObjectURL(new Blob([text], { type: "text/xml" }));
+        let folder: Folder;
+        try {
+          folder = await withTimeout(
+            this.loadImageCollection({ url: blobUrl, loadChildFolders: true }), "Reading the image catalog");
+        } finally {
+          URL.revokeObjectURL(blobUrl);
+        }
+        this.imagesetFolder = markRaw(folder);
+        this.places = this.extractPlaces(folder);
+        this.layersLoaded = true;
+
+        if (this.places.length > 0) {
+          // Park the camera zoomed out on the start target, then fly in once
+          // the intro is dismissed (maybeFlyToStart handles a fast dismiss).
+          this.frameStart();
+          this.maybeFlyToStart();
+          // Build the (initially hidden) 3D markers and 2D image footprints.
+          this.buildMarkers();
+          this.buildFootprints();
+          // Warm the start image's layer now so the loading screen can gate on it.
+          this.warmStartLayer();
+        } else {
+          this.startLayerLoaded = true;
+        }
+
+        // wwtZoomDeg can lag a tick on first load.
+        this.positionSetTimer = window.setTimeout(() => { this.positionSet = true; }, 150);
+      } catch (err) {
+        console.error("[jwst] startup failed", err);
+        this.bootError = describeBootError(err);
+        if (this.kioskMode) {
+          this.bootRetryInS = Math.round(scheduleKioskRetry() / 1000);
+        }
+      }
+    },
+
+    retryBoot(): void {
+      window.location.reload();
+    },
+
+    placeByName(name: string): Place | null {
+      const n = normalizeName(name);
+      return this.places.find((p) => normalizeName(p.get_name()) === n) ?? null;
+    },
+
+    labelCanvas(): void {
+      const canvas = (this.$el as HTMLElement | undefined)?.querySelector?.("canvas");
+      if (!canvas) { return; }
+      canvas.setAttribute("role", "img");
+      canvas.setAttribute("aria-label", this.canvasLabel);
+    },
+
+    syncUrl(): void {
+      if (this.kioskMode || !this.ready) { return; }
+      const params = new URLSearchParams(window.location.search);
+      if (this.selectedPlace) { params.set("image", this.selectedName); } else { params.delete("image"); }
+      if (this.mode3D) { params.set("mode", "3d"); } else { params.delete("mode"); }
+      const qs = params.toString();
+      const url = window.location.pathname + (qs ? `?${qs}` : "") + window.location.hash;
+      try { window.history.replaceState(null, "", url); } catch { /* sandboxed iframe */ }
+    },
+
+    // Share the current view: native share sheet where available (phones),
+    // otherwise copy the link.
+    async shareView(): Promise<void> {
+      const url = window.location.href;
+      const title = this.selectedName ? `${this.selectedName} · JWST Image Explorer` : "JWST Image Explorer";
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const nav = navigator as any;
+      try {
+        if (IS_COARSE_POINTER && typeof nav.share === "function") {
+          await nav.share({ title, url });
+          return;
+        }
+        await navigator.clipboard.writeText(url);
+        this.shareStatus = "Link copied";
+      } catch {
+        this.shareStatus = "Couldn't copy the link";
+      }
+      this.announce(this.shareStatus);
+      window.setTimeout(() => { this.shareStatus = ""; }, 2500);
+    },
+
+    announce(msg: string): void {
+      // Clear first so repeating the same message is announced again.
+      this.liveMessage = "";
+      this.$nextTick(() => { this.liveMessage = msg; });
     },
 
     // Sky position of a place's image center (falls back to the place's own
@@ -984,10 +1431,19 @@ export default defineComponent({
       }
     },
 
+    // Gallery clicks and arrow-key steps are guest navigation: they end a
+    // running tour (the tour's own steps call onSelectPlace directly).
+    onGallerySelect(place: Place): void {
+      if (this.tourActive) { this.stopTour(); }
+      this.onSelectPlace(place);
+    },
+
     onSelectPlace(place: Place): void {
       // Count only GUEST-initiated selections, never the attract auto-tour
       // (rule: attract must not pollute the "most-viewed images" metric).
       if (!this.attractMode) { statsTrack("select", place.get_name()); }
+      if (this.compareActive) { this.exitCompare(); }
+      this.announce(place.get_name());
 
       // In 3D, route gallery clicks through the smooth 3D fly (orient + cinematic
       // zoom) instead of the 2D image slew, which jumps abruptly in cosmos mode.
@@ -1019,7 +1475,7 @@ export default defineComponent({
         this.gotoRADecZoom({ raRad, decRad, zoomDeg, instant: true }).catch(() => undefined);
       } else {
         const predictedMs = this.timeToRADecZoom({ raRad, decRad, zoomDeg, rollRad: 0 }) * 1000;
-        slewMs = Math.max(MIN_SLEW_MS, predictedMs);
+        slewMs = Math.min(MAX_SLEW_MS, Math.max(MIN_SLEW_MS, predictedMs));
         // The promise rejects with "superseded" if another goto starts first;
         // swallow that so it isn't an unhandled rejection. `duration` (seconds)
         // stretches the camera move to match the clamped fade so near-location
@@ -1141,38 +1597,16 @@ export default defineComponent({
       // Galaxy3D volume slices; see GALAXY3D_PLAN.md).
       this.applySetting(["solarSystemMilkyWay", true]);
 
-      // Custom spreadsheet point shader (honors showFarSide + screen markerScale
-      // for the 3D marker layer).
-      // @ts-expect-error monkey-patching the engine prototype
-      SpreadSheetLayer.prototype.draw = drawSpreadSheetLayer;
       // @ts-expect-error monkey-patching the singleton
       ctl._drawSkyOverlays = drawSkyOverlays;
       // @ts-expect-error monkey-patching a static
       Constellations.initializeConstellationNames = initializeConstellationNames;
 
-      // High-res Gaia Milky Way panorama; drawGalaxyImage draws it as the base
-      // quad and layers the Galaxy3D v3 volume slices on top (knobs: __gx*).
-      // Delayed like prefetchCosmos: it's 3D-only and would otherwise compete
-      // with thumbnails + start-image tiles at mount. drawGalaxyEnsemble
-      // already no-ops gracefully until Grids._milkyWayImage.texture2d exists,
-      // so entering 3D before this fires just means the backdrop appears once
-      // it lands rather than crashing.
-      setTimeout(() => { Grids._milkyWayImage = Texture.fromUrl(GAIA_MILKY_WAY_URL); }, 6000);
+      // drawGalaxyImage draws the Gaia Milky Way (loaded by warm3D) as the base
+      // quad and layers the Galaxy3D v3 volume slices on top (knobs: __gx*). It
+      // no-ops gracefully until the texture exists.
       // @ts-expect-error monkey-patching a static
       Grids.drawGalaxyImage = drawGalaxyImage;
-      installGalaxy3D(); // v3: API-compat no-op (slices hook inside drawGalaxyImage)
-      // Warm the SDSS cosmos (galaxy binary + 256 bucket textures) during 2D
-      // time so the first 3D entry doesn't trickle galaxies in bucket-by-bucket.
-      prefetchCosmos();
-      // Pre-run the galaxy sprite atlas paint + structure build (pure canvas/
-      // math, no GL) during 2D idle so the first 3D draw only has to upload
-      // buffers/textures instead of stalling on ~1024x512px of noise synthesis.
-      const idle = (window as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => void }).requestIdleCallback;
-      if (typeof idle === "function") {
-        idle(() => prewarmGalaxySprites(), { timeout: 10000 });
-      } else {
-        setTimeout(() => prewarmGalaxySprites(), 6000);
-      }
       // @ts-expect-error monkey-patching a static
       LayerManager._draw = layerManagerDraw;
 
@@ -1180,10 +1614,39 @@ export default defineComponent({
       ctl.setSolarSystemMinZoom(MIN_ZOOM_3D);
       ctl.setSolarSystemMaxZoom(MAX_ZOOM_3D);
       ctl.zoom = zoom.bind(ctl);
+      // (3D constellation geometry is precomputed in warm3D.)
+    },
 
-      // Eagerly precompute the 3D constellation line geometry so the first
-      // toggle fades in smoothly instead of snapping once the async star +
-      // figures files land. Poll until ready, then stop (give up after ~30s).
+    // Start the 3D-only downloads: the Gaia Milky Way texture, the SDSS cosmos
+    // (galaxy binary + 256 bucket textures), the galaxy sprite atlas and the 3D
+    // constellation geometry (audit J3). Called on the first sign of intent
+    // (hover/focus on the 3D button, entering 3D, ?mode=3d) and at boot in kiosk
+    // mode, where smoothness matters more than bandwidth. With Save-Data on it
+    // waits until 3D is actually entered (force).
+    warm3D(force = false): void {
+      if (this.warmed3D) { return; }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const saveData = !!(navigator as any).connection?.saveData;
+      if (saveData && !force && !this.kioskMode) { return; }
+      this.warmed3D = true;
+      const ctl = WWTControl.singleton;
+      // Kiosk warms at boot: stagger so the catalog + start tiles win the network.
+      const delay = this.kioskMode && !force ? 6000 : 0;
+
+      this.warm3DTimers.push(window.setTimeout(() => {
+        Grids._milkyWayImage = Texture.fromUrl(GAIA_MILKY_WAY_URL);
+      }, delay));
+      this.warm3DTimers.push(prefetchCosmos(delay));
+      // Galaxy sprite atlas paint + structure build is pure canvas/math; run it
+      // in idle time so the first 3D draw only uploads buffers.
+      const idle = (window as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => void }).requestIdleCallback;
+      if (typeof idle === "function") {
+        idle(() => prewarmGalaxySprites(), { timeout: 10000 });
+      } else {
+        this.warm3DTimers.push(window.setTimeout(() => prewarmGalaxySprites(), delay + 500));
+      }
+      // Precompute the 3D constellation line geometry so the first toggle in
+      // 3D fades in smoothly. Poll until the star + figure files land (≤ 30 s).
       this.figures3DPollTimer = window.setInterval(() => {
         if (prebuildFigures3D(ctl.renderContext)) { window.clearInterval(this.figures3DPollTimer); }
       }, 250);
@@ -1331,6 +1794,8 @@ export default defineComponent({
 
     set3DMode(): void {
       if (this.mode3D) { return; }
+      this.warm3D(true);
+      if (this.compareActive) { this.exitCompare(); }
       // Remember the current 2D view + survey so "exit 3D" can return to them.
       // Capture the survey name NOW — once we switch the background to "Solar
       // System" below, curBackgroundImagesetName's getter would report that
@@ -1384,10 +1849,13 @@ export default defineComponent({
       }, 10);
     },
 
-    // Desc-panel thumbnail click (3D only): gentle arrival in 2D.
-    onDescThumbClick(): void {
+    // Every "View in 2D" entry point (description thumbnail, the panel button,
+    // the kiosk bar) uses the same gentle arrival (audit J17).
+    viewIn2D(): void {
       if (this.mode3D && this.selectedPlace) {
         this.set2DMode(this.selectedPlace, true);
+      } else if (this.mode3D) {
+        this.set2DMode();
       }
     },
 
@@ -1599,7 +2067,8 @@ export default defineComponent({
       const ctl = WWTControl.singleton;
       const px = ev.offsetX;
       const py = ev.offsetY;
-      const thresh = hover ? 14 : 18;
+      const touch = ev.pointerType === "touch" || ev.pointerType === "pen";
+      const thresh = hover ? 14 : (touch ? 24 : 18);
       const threshSq = thresh * thresh;
       let best: MarkerPoint | null = null;
       let bestX = 0;
@@ -1607,8 +2076,7 @@ export default defineComponent({
       let bestDistSq = Infinity;
 
       for (const mp of this.markerPoints) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const sp = (ctl as any).getScreenPointForCoordinates(mp.xR, mp.yR, mp.zR);
+        const sp = worldToScreen(mp.xR, mp.yR, mp.zR);
         if (!sp || !isFinite(sp.x) || !isFinite(sp.y)) { continue; }
         // Reject points behind the camera (the projection mirrors antipodes).
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1622,15 +2090,35 @@ export default defineComponent({
       }
 
       if (!best || bestDistSq > threshSq) {
-        if (hover) { this.clearHover3D(); }
+        if (hover || touch) { this.clearHover3D(); }
+        this.pendingTapName = "";
         return;
       }
 
       if (hover) {
-        this.hover3D = { show: true, name: best.name, thumb: this.markerThumb(best.place), x: bestX, y: bestY };
+        this.showHover3D(best, bestX, bestY, "");
+      } else if (touch && this.pendingTapName !== best.name) {
+        // First tap previews (label + "Tap again"), so a mis-tap in a dense
+        // field costs nothing; a second tap on the same marker opens it.
+        this.pendingTapName = best.name;
+        this.showHover3D(best, bestX, bestY, "Tap again to open");
       } else {
+        this.pendingTapName = "";
         this.onSelectMarker(best);
       }
+    },
+
+    // Update the hover label in place (no new object per frame, audit J23).
+    showHover3D(mp: MarkerPoint, x: number, y: number, hint: string): void {
+      const h = this.hover3D;
+      if (h.name !== mp.name) {
+        h.name = mp.name;
+        h.thumb = this.markerThumb(mp.place);
+      }
+      h.x = x;
+      h.y = y;
+      h.hint = hint;
+      h.show = true;
     },
 
     clearHover3D(): void {
@@ -1646,8 +2134,7 @@ export default defineComponent({
     debug3D(): any {
       const ctl = WWTControl.singleton;
       const samples = this.markerPoints.slice(0, 5).map((mp) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const sp = (ctl as any).getScreenPointForCoordinates?.(mp.xR, mp.yR, mp.zR);
+        const sp = worldToScreen(mp.xR, mp.yR, mp.zR);
         return { name: mp.name, ly: mp.ly, x: sp?.x, y: sp?.y };
       });
       const info = {
@@ -1682,7 +2169,7 @@ export default defineComponent({
     onDescThumbLoad(ev: Event): void {
       const img = ev.target as HTMLImageElement;
       const src = img.src;
-      if (src.startsWith("data:")) { return; } // our own cropped-swap reload
+      if (src.startsWith("blob:")) { return; } // our own cropped-swap reload
       croppedTileUrl(src).then((dataUrl) => {
         if (dataUrl && img.src === src) { img.src = dataUrl; }
       });
@@ -1779,7 +2266,11 @@ export default defineComponent({
           el.isContentEditable
         )) { return; }
         ev.preventDefault();
-        this.stepImage(ev.key === "ArrowRight" ? 1 : -1);
+        if (this.tourActive) {
+          this.tourStep(ev.key === "ArrowRight" ? 1 : -1);
+        } else {
+          this.stepImage(ev.key === "ArrowRight" ? 1 : -1);
+        }
         return;
       }
       // Escape closes whichever overlay is topmost (QR > intro > hamburger > survey).
@@ -1788,6 +2279,8 @@ export default defineComponent({
       if (this.showIntro) { this.closeIntro(); }
       else if (this.isMenuOpen) { this.isMenuOpen = false; }
       else if (this.showSurveyMenu) { this.showSurveyMenu = false; }
+      else if (this.compareActive) { this.exitCompare(); }
+      else if (this.tourActive) { this.stopTour(); }
     },
     // Close the hamburger/survey menus when the user clicks outside them
     // (the intro modal already has its own backdrop click-to-close).
@@ -1806,8 +2299,17 @@ export default defineComponent({
       this.showSurveyMenu = !this.showSurveyMenu;
       this.isMenuOpen = false;
       // The survey menu and the description panel share the same spot, so only
-      // one shows at a time.
-      if (this.showSurveyMenu) { this.showDescription = false; }
+      // one shows at a time. Focus moves into the menu (the active option, or
+      // the first) so keyboard users land where they can act.
+      if (this.showSurveyMenu) {
+        this.showDescription = false;
+        this.$nextTick(() => {
+          const menu = document.querySelector(".survey-menu");
+          const target = menu?.querySelector<HTMLElement>(".survey-option.active")
+            ?? menu?.querySelector<HTMLElement>(".survey-option");
+          target?.focus();
+        });
+      }
     },
     selectSurvey(name: string): void {
       statsTrack("survey");
@@ -1863,12 +2365,104 @@ export default defineComponent({
       statsTrack("takeHome");
     },
 
+    // ── Guided tour (audit J8) ────────────────────────────────────────────
+    // A visitor-paced walk through TOUR_STOPS: each stop flies to the image
+    // and shows its caption above the description, with Back/Next/Exit.
+    // Gallery clicks, Escape, entering 3D or the attract loop end it.
+    startTour(): void {
+      this.isMenuOpen = false;
+      if (this.tourPlaces.length === 0) { return; }
+      if (this.showIntro) { this.showIntro = false; this.hasFlownToStart = true; }
+      if (this.mode3D) { this.set2DMode(); }
+      statsTrack("tour");
+      this.tourActive = true;
+      this.tourIdx = 0;
+      this.goToTourStop();
+    },
+    tourStep(delta: 1 | -1): void {
+      if (!this.tourActive) { return; }
+      const n = this.tourPlaces.length;
+      const next = this.tourIdx + delta;
+      if (next < 0 || next >= n) {
+        if (next >= n) { this.stopTour(); this.announce("Tour finished"); }
+        return;
+      }
+      this.tourIdx = next;
+      this.goToTourStop();
+    },
+    goToTourStop(): void {
+      const stop = this.tourPlaces[this.tourIdx];
+      if (!stop) { return; }
+      this.showDescription = true;
+      this.onSelectPlace(stop.place);
+      this.announce(`Tour stop ${this.tourIdx + 1} of ${this.tourPlaces.length}: ${stop.place.get_name()}`);
+    },
+    stopTour(): void {
+      this.tourActive = false;
+    },
+
+    // ── Compare mode (audit J9) ───────────────────────────────────────────
+    // Layers a second image of the same target over the current one; the
+    // compare slider blends from "current only" (0) to "other only" (100).
+    // The compare layer lives outside imageLayers, so pruneLayers never drops it.
+    startCompare(place?: Place): void {
+      const target = place ?? this.compareCandidates[0];
+      if (!target || this.mode3D) { return; }
+      statsTrack("compare");
+      this.compareActive = true;
+      this.setCompareTarget(target);
+    },
+    setCompareTarget(place: Place): void {
+      const seq = ++this.compareSeq;
+      this.removeCompareLayer();
+      this.comparePlace = place;
+      const iset = place.get_studyImageset() ?? place.get_backgroundImageset();
+      this.addImageSetLayer({
+        url: iset?.get_url() ?? "",
+        mode: "preloaded",
+        name: `${place.get_name()} (compare)`,
+        goto: false,
+      }).then((layer) => {
+        if (seq !== this.compareSeq || !this.compareActive) { this.deleteLayer(layer.id); return; }
+        this.compareLayer = markRaw(layer);
+        applyImageSetLayerSetting(this.compareLayer, ["opacity", this.compareOpacity / 100]);
+      }).catch((err) => {
+        console.warn("compare: failed to add layer", err);
+      });
+    },
+    onCompareSelect(ev: Event): void {
+      const key = (ev.target as HTMLSelectElement).value;
+      const place = this.compareCandidates.find((p) => placeKey(p) === key);
+      if (place) { this.setCompareTarget(place); }
+    },
+    removeCompareLayer(): void {
+      if (this.compareLayer) {
+        this.deleteLayer(this.compareLayer.id);
+        this.compareLayer = null;
+      }
+    },
+    exitCompare(): void {
+      this.compareSeq++;
+      this.compareActive = false;
+      this.comparePlace = null;
+      this.removeCompareLayer();
+    },
+    // Swap which image is "current": the compared image becomes the selection.
+    swapCompare(): void {
+      const other = this.comparePlace;
+      if (!other) { return; }
+      this.exitCompare();
+      this.onSelectPlace(other);
+    },
+
     // ── Kiosk attract loop ─────────────────────────────────────────────────
     // Entered on idle: reset to a clean 2D view, then auto-cycle images.
     enterAttract(): void {
       // The session ends at the guest's LAST activity, not when the idle timer
       // fired, so the 90 s idle tail isn't counted as dwell.
       statsSessionEnd(this.kioskIdleWatcher?.lastActivityTs() ?? Date.now());
+      this.stopTour();
+      if (this.compareActive) { this.exitCompare(); }
       this.resetKioskView();
       // 3 s settle lets set2DMode's deferred (10 ms) camera move finish before
       // the first attract step, so they don't fight.
@@ -1966,11 +2560,11 @@ export default defineComponent({
       );
     },
 
-    // Pull back to the Milky Way overview: "every gold ring is a real image".
+    // Pull back to the Milky Way overview: "every ring is a real image".
     attract3DPhase2(mpQ: MarkerPoint, placeQ: Place): void {
       if (!this.attractMode) { return; }
       this.flyToOverview3D();
-      this.attractCaption = "Every gold ring is a real Webb image, placed at its true distance — touch one to explore";
+      this.attractCaption = "Every ring is a real Webb image, placed at its true distance. Touch one to explore.";
 
       this.attractTimer = window.setTimeout(
         () => this.attract3DPhase3(mpQ, placeQ),
@@ -2025,19 +2619,20 @@ export default defineComponent({
 </script>
 
 <style scoped lang="less">
-/* No text selection anywhere in the interface (guests double-tapping /
-   long-pressing descriptive text shouldn't paint blue highlights). user-select
+/* Kiosk only: no text selection anywhere (guests double-tapping /
+   long-pressing descriptive text shouldn't paint blue highlights). On the web,
+   visitors can copy descriptions, credits and names (audit J12). user-select
    isn't inherited, but descendants' `auto` resolves to the parent's used value,
-   so this one rule covers every panel including child components. Editable
-   inputs opt back in where they live (ImageGallery's search input). */
-#main-content {
+   so this one rule covers every panel including child components. */
+#main-content.kiosk {
   user-select: none;
   -webkit-user-select: none;
 }
 
-/* Kiosk layout: approximate height of the top thumbnail strip (gallery header
-   + filter chips + one row of 7.5rem thumbs). Everything that sits below the
-   strip (controls, top bar, attract caption) offsets from this. */
+/* Kiosk layout: height of the top thumbnail strip (gallery header + filter
+   chips + one row of 7.5rem thumbs). Everything that sits below the strip
+   (controls, top bar, attract caption) offsets from this. This value is only
+   the first-paint estimate; a ResizeObserver keeps it measured (J7). */
 #main-content.kiosk {
   --kiosk-strip-h: 12.5rem;
 }
@@ -2080,19 +2675,87 @@ export default defineComponent({
   }
 }
 
-/* 2D/3D toggle: gold by default, blue glow when 3D is active. */
-.mode-toggle {
+/* Segmented 2D | 3D control (audit J13): the pressed half shows which view is
+   active, so the button no longer reads as a status label. */
+.mode-seg {
+  display: flex;
+  height: 2.5rem;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--accent-color);
+  background: rgba(4, 6, 24, 0.82);
+  backdrop-filter: blur(6px);
+}
+.mode-seg-btn {
+  min-width: 2.6rem;
+  padding: 0 0.6rem;
+  border: none;
+  background: none;
+  color: rgba(255, 255, 255, 0.75);
+  font: inherit;
   font-size: 0.95rem;
   font-weight: 700;
   letter-spacing: 0.03em;
-}
-.mode-toggle.active {
-  color: var(--accent-color2);
-  border-color: var(--accent-color2);
-  box-shadow: 0 0 8px var(--accent-color2);
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease;
+
+  & + & {
+    border-left: 1px solid rgba(240, 171, 82, 0.5);
+  }
+  &:hover {
+    color: #fff;
+  }
+  &.active {
+    color: #140d02;
+    background: var(--accent-color);
+  }
+  &:focus-visible {
+    outline: 2px solid var(--accent-color2);
+    outline-offset: -3px;
+  }
 }
 
-/* "View in 2D" button inside the description panel (3D mode only). */
+/* Startup error card (audit E3). */
+.boot-error {
+  max-width: min(32rem, 88vw);
+  padding: 1.5rem 1.75rem;
+  text-align: center;
+  background: rgba(4, 6, 24, 0.92);
+  border: 1px solid var(--accent-color);
+  border-radius: 12px;
+  color: #eaeaea;
+  font-size: 1rem;
+  line-height: 1.45;
+
+  .boot-error-title {
+    color: var(--accent-color);
+    font-size: 1.25rem;
+    margin: 0 0 0.6rem;
+  }
+  .boot-auto {
+    margin-top: 0.75rem;
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.75);
+  }
+}
+.boot-retry {
+  margin-top: 1rem;
+  padding: 0.55rem 1.4rem;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent-color);
+  color: #140d02;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* Action buttons inside the description panel (View in 2D, Compare, Share). */
+.desc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
 .desc-view2d {
   margin-top: 0.6rem;
   padding: 0.35rem 0.7rem;
@@ -2138,6 +2801,12 @@ export default defineComponent({
   color: #fff;
   font-size: 0.78rem;
   line-height: 1.2;
+}
+.marker-tip-hint {
+  display: block;
+  margin-top: 0.15rem;
+  color: var(--accent-color2);
+  font-size: 0.75rem;
 }
 
 .hamb-menu {
@@ -2202,6 +2871,16 @@ export default defineComponent({
   &:hover {
     background: rgba(240, 171, 82, 0.12);
     color: #fff;
+  }
+
+  /* On/off state for toggles (aria-pressed carries it for screen readers). */
+  .menu-check {
+    margin-left: auto;
+    color: var(--accent-color);
+    opacity: 0;
+  }
+  .menu-check.on {
+    opacity: 1;
   }
 }
 
@@ -2354,6 +3033,34 @@ export default defineComponent({
   }
 }
 
+.intro-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 1.1rem;
+}
+.intro-action {
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--accent-color);
+  background: none;
+  color: var(--accent-color);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+
+  &.primary {
+    background: var(--accent-color);
+    color: #140d02;
+  }
+  &:hover {
+    box-shadow: 0 0 8px var(--accent-color);
+  }
+}
+
 .intro-credits {
   margin-top: 1rem;
   padding-top: 0.75rem;
@@ -2471,6 +3178,7 @@ export default defineComponent({
   z-index: 10;
   width: min(60ch, 88vw);
   max-height: 32vh;
+  max-height: 32dvh;
   overflow-y: auto;
   background: rgba(4, 6, 24, 0.88);
   backdrop-filter: blur(6px);
@@ -2501,7 +3209,21 @@ export default defineComponent({
 }
 
 /* Clickable (gentle "View in 2D" jump) — glow affordance on hover. */
+.desc-thumb-btn {
+  flex: 0 0 auto;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-radius: 6px;
+
+  &:focus-visible {
+    outline: 2px solid var(--accent-color2);
+    outline-offset: 2px;
+  }
+}
 .desc-thumb {
+  display: block;
   flex: 0 0 auto;
   width: 3rem;
   height: 3rem;
@@ -2582,6 +3304,138 @@ export default defineComponent({
 .desc-learn {
   margin-left: 0.5rem;
   white-space: nowrap;
+}
+
+/* Guided tour strip (audit J8), at the top of the description panel. */
+.tour-strip {
+  margin: -0.15rem 1.5rem 0.6rem 0;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+.tour-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+.tour-label {
+  color: var(--accent-color2);
+  font-size: 0.8rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.tour-exit {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.8);
+  font: inherit;
+  font-size: 0.78rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.tour-caption {
+  margin: 0.4rem 0 0.5rem;
+  font-size: 0.95rem;
+  line-height: 1.4;
+  color: #fff;
+}
+.tour-nav {
+  display: flex;
+  gap: 0.5rem;
+}
+.tour-btn {
+  padding: 0.35rem 0.8rem;
+  border-radius: 6px;
+  border: 1px solid var(--accent-color);
+  background: none;
+  color: var(--accent-color);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+
+  &.primary {
+    background: var(--accent-color);
+    color: #140d02;
+  }
+  &:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+}
+
+/* Compare bar (audit J9): sits where the crossfade bar does. */
+.compare-bar {
+  position: absolute;
+  bottom: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: min(92vw, 52rem);
+  background: rgba(4, 6, 24, 0.88);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--accent-color2);
+  border-radius: 999px;
+  padding: 0.35rem 0.6rem 0.35rem 1rem;
+  pointer-events: auto;
+}
+.compare-name {
+  flex: 0 1 12rem;
+  min-width: 0;
+  color: #fff;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.compare-select {
+  flex: 0 1 14rem;
+  min-width: 0;
+  padding: 0.25rem 0.4rem;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(4, 6, 24, 0.95);
+  color: #fff;
+  font: inherit;
+  font-size: 0.8rem;
+}
+.compare-icon-btn {
+  flex: 0 0 auto;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: none;
+  color: var(--accent-color2);
+  cursor: pointer;
+
+  &:hover {
+    color: #fff;
+    border-color: var(--accent-color2);
+  }
+}
+
+/* Kiosk staff warning (audit J2): small, bottom-right, unmissable for staff. */
+.kiosk-staff-warning {
+  position: absolute;
+  right: 0.8rem;
+  bottom: 0.6rem;
+  z-index: 30;
+  padding: 0.35rem 0.7rem;
+  border-radius: 6px;
+  background: #5a1d00;
+  border: 1px solid #ff9e4a;
+  color: #ffd9b8;
+  font-size: 0.8rem;
+  pointer-events: none;
 }
 
 /* Crossfade slider */
@@ -2708,7 +3562,7 @@ export default defineComponent({
 
 /* Attract-loop 3D interlude caption — dark pill, top-center just below the
    kiosk top bar (attract only ever runs in kiosk mode, so the strip-height
-   var is always defined; the 4.5rem fallback covers a stray non-kiosk render). */
+   var is always defined; the 1.2rem fallback covers a stray non-kiosk render). */
 .kiosk-3d-caption {
   position: absolute;
   top: calc(var(--kiosk-strip-h, 1.2rem) + 3.3rem);
@@ -2780,6 +3634,52 @@ export default defineComponent({
   }
   /* The opacity slider spans 80vw here and covers the corner logos — hide
      them on mobile (the splash modal still carries CosmicDS/WWT attribution). */
+  .bottom-logos {
+    display: none;
+  }
+  .compare-bar {
+    flex-wrap: wrap;
+    border-radius: 14px;
+    padding: 0.5rem 0.75rem;
+  }
+  .compare-name {
+    display: none;
+  }
+}
+
+/* Landscape phones and other short screens (audit J7). These are wider than
+   the 600px breakpoint, so they used to get the desktop layout, where the
+   gallery, the description panel and the slider overlapped. Here the gallery
+   becomes a narrow right-hand rail (ImageGallery.vue) and the panel and
+   sliders sit to its left. */
+@media (max-height: 500px) and (orientation: landscape) {
+  .top-left-controls {
+    top: 0.5rem;
+    left: 0.5rem;
+  }
+  .gallery-wrap {
+    top: 0.5rem;
+    right: 0.5rem;
+  }
+  .description-panel {
+    left: 0.5rem;
+    transform: none;
+    bottom: 3.4rem;
+    width: min(60ch, calc(100vw - 10.5rem));
+    max-height: calc(100dvh - 7rem);
+  }
+  .crossfade-bar,
+  .compare-bar {
+    left: 0.5rem;
+    transform: none;
+    bottom: 0.5rem;
+    width: min(36rem, calc(100vw - 10.5rem));
+  }
+  .survey-menu {
+    left: 0.5rem;
+    transform: none;
+    bottom: 3.4rem;
+  }
   .bottom-logos {
     display: none;
   }

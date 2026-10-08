@@ -5,8 +5,8 @@
 
 import {
   CameraParameters, Color, Colors, Constellations, Coordinates, Grids,
-  LayerManager, LayerMap, Matrix3d, PushPin, RenderContext, Settings, SimpleLineShader, SpaceTimeController,
-  SpreadSheetLayer, Text3d, Text3dBatch, TextShader, Texture, URLHelpers,
+  LayerManager, Matrix3d, RenderContext, Settings, SimpleLineShader, SpaceTimeController,
+  Text3d, Text3dBatch, Texture, URLHelpers,
   Vector3d, WWTControl
 } from "@wwtelescope/engine";
 
@@ -24,6 +24,7 @@ import { drawFootprints } from "./footprints";
 // WWT's own galaxy-image quad while active.
 import { MW_ANGLE_SCALE, imageUnitsToWorld } from "./galaxy-frame";
 import { drawGalaxyEnsemble, ensembleHandlesBasePlane } from "./galaxy3d";
+import { DEBUG } from "./debug";
 
 // ── Constellation figure fade ─────────────────────────────────────────────────
 // WWT's SimpleLineShader hardcodes alpha=1 for sky lines. We patch it once here
@@ -36,7 +37,6 @@ let _consFigAnimStart = 0;
 let _consFigAlphaFrom = 0;
 let _consFigAlphaTo = 0;
 let _consFigAlpha = 0;     // current animated value, read each frame in drawSkyOverlays
-let _inConsDraw = false;   // flag set only during constellationsFigures.draw()
 let _consUserTarget = 0;   // last user-requested target (0 or 1), before mode dimming
 
 function _modeDimFactor(): number {
@@ -89,112 +89,33 @@ function _patchedDrawSingleConstellation(renderContext, ls, opacity) {
   }
 }
 
-const _origSimpleLineShaderUse = SimpleLineShader.use;
-function _patchedSimpleLineShaderUse(renderContext, vertex, lineColor, useDepth) {
-  _origSimpleLineShaderUse.call(this, renderContext, vertex, lineColor, useDepth);
-  if (_inConsDraw && renderContext.gl && SimpleLineShader.lineColorLoc != null) {
-    renderContext.gl.uniform4f(
-      SimpleLineShader.lineColorLoc,
-      lineColor.r / 255, lineColor.g / 255, lineColor.b / 255,
-      _consFigAlpha
-    );
-  }
-}
-
-// WWT's TextShader fragment shader is `gl_FragColor = texture2D(...)` with no
-// opacity uniform, so the `opacity` arg to Text3dBatch.draw is ignored on the
-// WebGL path. Constellation label fade therefore doesn't work out of the box.
-// We compile a parallel program with a uOpacity uniform and bind it in place
-// of WWT's program only while _inConsDraw is true (i.e. only for the names
-// batch). All other Text3dBatch callers (grid labels, planet text, …) are
-// unaffected.
-let _consTextProg: WebGLProgram | null = null;
-let _consTextProgLocs: {
-  vert: number; tex: number;
-  mv: WebGLUniformLocation | null; proj: WebGLUniformLocation | null;
-  samp: WebGLUniformLocation | null; opacity: WebGLUniformLocation | null;
-} | null = null;
-
-function _ensureConsTextProg(gl: WebGLRenderingContext) {
-  if (_consTextProg) return;
-  const vertSrc =
-    'attribute vec3 aVertexPosition;\n' +
-    'attribute vec2 aTextureCoord;\n' +
-    'uniform mat4 uMVMatrix;\n' +
-    'uniform mat4 uPMatrix;\n' +
-    'varying vec2 vTextureCoord;\n' +
-    'void main(void) {\n' +
-    '  gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);\n' +
-    '  vTextureCoord = aTextureCoord;\n' +
-    '}\n';
-  const fragSrc =
-    'precision mediump float;\n' +
-    'varying vec2 vTextureCoord;\n' +
-    'uniform sampler2D uSampler;\n' +
-    'uniform float uOpacity;\n' +
-    'void main(void) {\n' +
-    '  vec4 c = texture2D(uSampler, vTextureCoord);\n' +
-    '  gl_FragColor = vec4(c.rgb, c.a * uOpacity);\n' +
-    '}\n';
-  const vs = gl.createShader(gl.VERTEX_SHADER)!;
-  gl.shaderSource(vs, vertSrc); gl.compileShader(vs);
-  const fs = gl.createShader(gl.FRAGMENT_SHADER)!;
-  gl.shaderSource(fs, fragSrc); gl.compileShader(fs);
-  const prog = gl.createProgram()!;
-  gl.attachShader(prog, vs); gl.attachShader(prog, fs); gl.linkProgram(prog);
-  _consTextProg = prog;
-  _consTextProgLocs = {
-    vert: gl.getAttribLocation(prog, 'aVertexPosition'),
-    tex: gl.getAttribLocation(prog, 'aTextureCoord'),
-    mv: gl.getUniformLocation(prog, 'uMVMatrix'),
-    proj: gl.getUniformLocation(prog, 'uPMatrix'),
-    samp: gl.getUniformLocation(prog, 'uSampler'),
-    opacity: gl.getUniformLocation(prog, 'uOpacity'),
-  };
-}
-
-const _origTextShaderUse = TextShader.use;
-function _patchedTextShaderUse(renderContext, vertex, texture) {
-  if (!_inConsDraw || !renderContext.gl) {
-    return _origTextShaderUse.call(this, renderContext, vertex, texture);
-  }
-  const gl = renderContext.gl as WebGLRenderingContext;
-  _ensureConsTextProg(gl);
-  const locs = _consTextProgLocs!;
-  gl.useProgram(_consTextProg);
-  // Matrix3d is exposed globally by the WWT engine at runtime (see CLAUDE.md
-  // note on the layerManagerDraw implicit-Matrix3d caveat).
-  const mvMat = Matrix3d.multiplyMatrix(renderContext.get_world(), renderContext.get_view());
-  gl.uniformMatrix4fv(locs.mv, false, mvMat.floatArray());
-  gl.uniformMatrix4fv(locs.proj, false, renderContext.get_projection().floatArray());
-  gl.uniform1i(locs.samp, 0);
-  gl.uniform1f(locs.opacity, _consFigAlpha);
-  if (renderContext.space) gl.disable(gl.DEPTH_TEST);
-  else gl.enable(gl.DEPTH_TEST);
-  gl.disableVertexAttribArray(0);
-  gl.disableVertexAttribArray(1);
-  gl.disableVertexAttribArray(2);
-  gl.disableVertexAttribArray(3);
-  gl.bindBuffer(gl.ARRAY_BUFFER, vertex);
-  gl.enableVertexAttribArray(locs.vert);
-  gl.enableVertexAttribArray(locs.tex);
-  gl.vertexAttribPointer(locs.vert, 3, gl.FLOAT, false, 20, 0);
-  gl.vertexAttribPointer(locs.tex, 2, gl.FLOAT, false, 20, 12);
-  gl.activeTexture(gl.TEXTURE0);
-  gl.bindTexture(gl.TEXTURE_2D, texture);
-  gl.enable(gl.BLEND);
-  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-}
+// Opacity for constellation figures and labels is passed natively: in engine
+// 7.40 (not 7.34), SimpleLineShader.use and TextShader.use (via Text3dBatch.draw)
+// honor an opacity argument, so the old shader wrappers (a re-set alpha uniform
+// and a parallel text program) are gone. The parallel text program would now
+// be actively wrong: 7.40's TextShader samples a texture array with a 24-byte
+// vertex stride.
 
 // ── Tile sharpness ────────────────────────────────────────────────────────────
 // TILE_QUALITY_SCALE > 1 makes isTileBigEnough() recurse into finer tile levels
-// by dividing the apparent fovScale (arcsec/pixel). Value of 2 = one extra level
-// on every screen. Raise to 4 for two extra levels (heavier network load).
-// This is orthogonal to the physical-canvas patch below: TILE_QUALITY_SCALE
-// requests extra depth on top of whatever the physical pixel count warrants.
+// by dividing the apparent fovScale (arcsec/pixel). 2 = one extra level on
+// every screen; 4 = two extra levels, roughly 16× the tiles per view of the
+// stock engine. That looks great on a desktop monitor but is heavy on phones
+// and kiosk GPUs, so it's chosen per device at load (audit E12):
+//   4 on a fine pointer with devicePixelRatio ≤ 1.5 and ≥ 8 GB RAM (or RAM
+//     unreported, as in Safari/Firefox), otherwise 2.
+//   ?tileq=<1..8> overrides it (testing, or pinning a kiosk's value).
 // Safe: WWT silently caps at the deepest available level, so over-requesting
 // a level the server lacks is harmless.
-export const TILE_QUALITY_SCALE = 4;
+function chooseTileQualityScale(): number {
+  const q = Number(new URLSearchParams(window.location.search).get('tileq'));
+  if (Number.isFinite(q) && q >= 1 && q <= 8) return q;
+  const finePointer = window.matchMedia('(pointer: fine)').matches;
+  const dpr = window.devicePixelRatio || 1;
+  const mem = (navigator as any).deviceMemory as number | undefined;
+  return finePointer && dpr <= 1.5 && (mem === undefined || mem >= 8) ? 4 : 2;
+}
+export const TILE_QUALITY_SCALE = chooseTileQualityScale();
 
 const _origGetFovScale = RenderContext.prototype.get_fovScale;
 function _patchedGetFovScale() {
@@ -265,7 +186,6 @@ function _farZoomFadeT(zoom: number): number {
 // zooms. The marker floor (part b of P3.6) has no such ordering constraint
 // and is computed directly in layerManagerDraw, right at the drawMarkerCloud()
 // call site.
-const _origDrawCosmos3D = Grids.drawCosmos3D;
 function _patchedDrawCosmos3D(renderContext, _opacity) {
   const ctl = WWTControl.singleton;
   if (!(ctl && typeof ctl.get_solarSystemMode === 'function' && ctl.get_solarSystemMode())) return;
@@ -292,7 +212,7 @@ function _patchedDrawCosmos3D(renderContext, _opacity) {
 // Debug/verification helper (harmless to reassign on module re-eval — same
 // pattern as __gxSpriteInfo etc.): read the live P3.6 fade state for a given
 // or current zoom, without needing pixel sampling.
-if (typeof window !== 'undefined') {
+if (DEBUG) {
   (window as any).__zoomFadeInfo = function (zoomOverride?: number) {
     const ctl = WWTControl.singleton;
     const zoom = zoomOverride ?? ctl?.renderContext?.viewCamera?.zoom;
@@ -317,99 +237,17 @@ if (typeof window !== 'undefined') {
 // duplicated chunk, etc.) would capture the ALREADY-PATCHED methods as
 // "originals" and wrap them again — e.g. `get_fovScale` divides by
 // TILE_QUALITY_SCALE once; double-wrapped it would divide by
-// TILE_QUALITY_SCALE² (÷16 instead of ÷4), and the other four wrappers would
-// each run their extra logic (constellation cull neutralization, line/text
-// shader alpha, pan-speed compensation) twice per call. The sixth entry
-// (drawCosmos3D, P3.6) fully replaces the engine's method rather than
-// wrapping it, but the same double-install hazard applies: re-running the
-// assignment is harmless (it just reassigns the same function reference), so
-// it's included in this guarded block purely for consistency with the rest.
+// TILE_QUALITY_SCALE², and the other wrappers would each run their extra logic
+// (constellation cull neutralization, pan-speed compensation) twice per call.
+// drawCosmos3D (P3.6) fully replaces the engine's method rather than wrapping
+// it, so re-running that assignment is harmless; it's in this block only for
+// consistency with the rest.
 if (!(window as any).__wwtHacksInstalled) {
   (Constellations as any).prototype._drawSingleConstellation = _patchedDrawSingleConstellation;
-  SimpleLineShader.use = _patchedSimpleLineShaderUse;
-  TextShader.use = _patchedTextShaderUse;
   RenderContext.prototype.get_fovScale = _patchedGetFovScale;
   WWTControl.prototype.move = _patchedMove;
   Grids.drawCosmos3D = _patchedDrawCosmos3D;
   (window as any).__wwtHacksInstalled = true;
-}
-
-// ── Physical-pixel canvas for HiDPI dot/circle sharpness ─────────────────────
-// WWT sizes its WebGL canvas in CSS pixels and keeps renderContext.width/height
-// in CSS pixels too. On HiDPI displays (DPR > 1) the GL framebuffer is at CSS
-// resolution and then upscaled by the browser — making dot edges blurry.
-//
-// This function (call once after WWTControl initialises) installs two shims:
-//
-//   canvas.width / canvas.height  (instance property, shadows prototype)
-//     getter → returns CSS size, so WWT's every-frame resize check
-//              (canvas.width !== parentNode.clientWidth) never triggers a reset
-//     setter → stores physical size in the actual canvas buffer;
-//              also updates canvas.style.width/height so the browser still
-//              displays at CSS size rather than the larger physical size
-//
-//   renderContext.width / renderContext.height  (instance property)
-//     renderOneFrame does:  renderContext.width = canvas.width  (CSS via getter)
-//     Our setter multiplies by DPR, so WWT uses physical dims for the GL viewport
-//     and fovScale = (fovAngle / physicalHeight) × 3600 (correct for HiDPI).
-//     The TILE_QUALITY_SCALE patch then adds extra depth on top.
-//
-// Coordinate impact: findScreenPointForRADec() returns physical pixels;
-// findRADecForScreenPoint() expects physical pixels. Callers must scale by DPR.
-// See SCREEN_DPR usages in exo-sonification.vue.
-//
-// To revert: remove this function, its call in mounted(), and the SCREEN_DPR
-// coordinate scaling in closestInView() and spawnPing().
-// NOTE: not wired; remove or wire before release (this app has no mounted()
-// call site or SCREEN_DPR scaling — those references above are from the
-// exo-sonification app this was ported from).
-export function installHiDpiCanvas() {
-  const dpr = window.devicePixelRatio ?? 1;
-  if (dpr <= 1) return;
-
-  const ctl = WWTControl.singleton;
-  const canvas = ctl.canvas;
-  const rc = ctl.renderContext;
-
-  // Canvas property shim
-  const canvasProto = HTMLCanvasElement.prototype;
-  const origW = Object.getOwnPropertyDescriptor(canvasProto, 'width')!;
-  const origH = Object.getOwnPropertyDescriptor(canvasProto, 'height')!;
-
-  Object.defineProperty(canvas, 'width', {
-    get(): number { return Math.round(origW.get!.call(this) / dpr); },
-    set(cssW: number) {
-      origW.set!.call(this, Math.round(cssW * dpr));
-      (this as HTMLCanvasElement).style.width = cssW + 'px';
-    },
-    configurable: true,
-  });
-  Object.defineProperty(canvas, 'height', {
-    get(): number { return Math.round(origH.get!.call(this) / dpr); },
-    set(cssH: number) {
-      origH.set!.call(this, Math.round(cssH * dpr));
-      (this as HTMLCanvasElement).style.height = cssH + 'px';
-    },
-    configurable: true,
-  });
-
-  // renderContext property shim
-  let _rcW = Math.round((rc.width || canvas.clientWidth) * dpr);
-  let _rcH = Math.round((rc.height || canvas.clientHeight) * dpr);
-  Object.defineProperty(rc, 'width', {
-    get(): number { return _rcW; },
-    set(cssW: number) { _rcW = Math.round(cssW * dpr); },
-    configurable: true,
-  });
-  Object.defineProperty(rc, 'height', {
-    get(): number { return _rcH; },
-    set(cssH: number) { _rcH = Math.round(cssH * dpr); },
-    configurable: true,
-  });
-
-  // Force initial physical sizing
-  canvas.width = canvas.clientWidth;
-  canvas.height = canvas.clientHeight;
 }
 
 export function zoom(factor: number) {
@@ -443,21 +281,13 @@ export function drawSkyOverlays() {
   }
 
   if (_consFigAlpha > 0) {
-    // Wrap the names + figures draws with _inConsDraw so the patched
-    // TextShader.use binds the opacity-aware program for label fade and the
-    // patched SimpleLineShader.use applies _consFigAlpha to figure lines.
-    // try/finally ensures the flag is cleared even if a draw throws — a stuck
-    // `true` would silently fade unrelated text/lines in subsequent frames.
-    _inConsDraw = true;
-    try {
-      Constellations.drawConstellationNames(this.renderContext, _consFigAlpha, Colors.get_yellow());
-      if (WWTControl.constellationsFigures == null) {
-        WWTControl.constellationsFigures = Constellations.create('Constellations', URLHelpers.singleton.engineAssetUrl('figures.txt'), false, false, false);
-      }
-      WWTControl.constellationsFigures.draw(this.renderContext, false, 'UMA', false);
-    } finally {
-      _inConsDraw = false;
+    // Native per-draw opacity (engine 7.40+) carries the fade for both the
+    // label batch and the figure lines.
+    Constellations.drawConstellationNames(this.renderContext, _consFigAlpha, Colors.get_yellow());
+    if (WWTControl.constellationsFigures == null) {
+      WWTControl.constellationsFigures = Constellations.create('Constellations', URLHelpers.singleton.engineAssetUrl('figures.txt'), false, false, false);
     }
+    WWTControl.constellationsFigures.draw(this.renderContext, false, 'UMA', false, _consFigAlpha);
   }
   if (Settings.get_active().get_showAltAzGrid()) {
     const altAzColor = Color.fromArgb(1, 3, 92, 134);
@@ -486,109 +316,6 @@ export function initializeConstellationNames() {
   });
 };
 
-export function makeAltAzGridText() {
-  if (Grids._altAzTextBatch == null) {
-    const glyphHeight = 70;
-    Grids._altAzTextBatch = new Text3dBatch(glyphHeight);
-    const sign = SpaceTimeController.get_location().get_lat() < 0 ? -1 : 1;
-    const alt = 0.03 * sign;
-    const up = Vector3d.create(0, sign, 0);
-    const directions = [
-      [[0, alt, -1], "N"],
-      [[-1, alt, 0], "E"],
-      [[0, alt, 1], "S"],
-      [[1, alt, -0.0095], "V"],
-      [[1, alt, 0.0095], "V"]
-    ]
-    directions.forEach(([v, text]) => {
-      Grids._altAzTextBatch.add(new Text3d(Vector3d.create(...v), up, text, 75, 0.00018));
-    });
-  }
-}
-
-export function drawSpreadSheetLayer(renderContext, opacity, flat) {
-  // (JWST: no exoplanet short-circuit — every spreadsheet layer, including the
-  // JWST 3D marker layer, renders through the standard path below. The override
-  // is kept because it honors get_showFarSide()/get_markerScale() for the point
-  // pass, which the marker layer relies on.)
-  var device = renderContext;
-  if (this.version !== this.lastVersion) {
-    this.cleanUp();
-  }
-  this.lastVersion = this.version;
-  if (this.bufferIsFlat !== flat) {
-    this.cleanUp();
-    this.bufferIsFlat = flat;
-  }
-  if (this.dirty) {
-    this.prepVertexBuffer(device, opacity);
-  }
-  var jNow = SpaceTimeController.get_jNow() - SpaceTimeController.utcToJulian(this.baseDate);
-  var adjustedScale = this.scaleFactor * 3;
-  if (flat && this.astronomical && (this._markerScale$1 === 1)) {
-    adjustedScale = (this.scaleFactor / (renderContext.viewCamera.zoom / 360));
-  }
-  if (this.triangleList2d != null) {
-    this.triangleList2d.decay = this.decay;
-    this.triangleList2d.sky = this.get_astronomical();
-    this.triangleList2d.timeSeries = this.timeSeries;
-    this.triangleList2d.jNow = jNow;
-    this.triangleList2d.draw(renderContext, opacity * this.get_opacity(), 1);
-  }
-  if (this.triangleList != null) {
-    this.triangleList.decay = this.decay;
-    this.triangleList.sky = this.get_astronomical();
-    this.triangleList.timeSeries = this.timeSeries;
-    this.triangleList.jNow = jNow;
-    this.triangleList.draw(renderContext, opacity * this.get_opacity(), 1);
-  }
-  if (this.pointList != null) {
-    this.pointList.depthBuffered = false;
-    this.pointList.showFarSide = this.get_showFarSide();
-    this.pointList.decay = (this.timeSeries) ? this.decay : 0;
-    this.pointList.sky = this.get_astronomical();
-    this.pointList.timeSeries = this.timeSeries;
-    this.pointList.jNow = jNow;
-    this.pointList.scale = (this._markerScale$1 === 1) ? adjustedScale : -adjustedScale;
-    switch (this._plotType$1) {
-      case 0:
-        this.pointList.draw(renderContext, opacity * this.get_opacity(), false);
-        break;
-      case 2:
-        this.pointList.drawTextured(renderContext, SpreadSheetLayer.get__circleTexture$1().texture2d, opacity * this.get_opacity());
-        break;
-      case 1:
-        this.pointList.drawTextured(renderContext, PushPin.getPushPinTexture(19), opacity * this.get_opacity());
-        break;
-      case 3:
-        this.pointList.drawTextured(renderContext, PushPin.getPushPinTexture(35), opacity * this.get_opacity());
-        break;
-      case 5:
-      case 4:
-        this.pointList.drawTextured(renderContext, PushPin.getPushPinTexture(this._markerIndex$1), opacity * this.get_opacity());
-        break;
-      default:
-        break;
-    }
-  }
-  if (this.lineList != null) {
-    this.lineList.sky = this.get_astronomical();
-    this.lineList.decay = this.decay;
-    this.lineList.timeSeries = this.timeSeries;
-    this.lineList.jNow = jNow;
-    this.lineList.drawLines(renderContext, opacity * this.get_opacity());
-  }
-  if (this.lineList2d != null) {
-    this.lineList2d.sky = this.get_astronomical();
-    this.lineList2d.decay = this.decay;
-    this.lineList2d.timeSeries = this.timeSeries;
-    this.lineList2d.showFarSide = this.get_showFarSide();
-    this.lineList2d.jNow = jNow;
-    this.lineList2d.drawLines(renderContext, opacity * this.get_opacity());
-  }
-  return true;
-}
-
 // ── Cosmos (SDSS galaxies) prefetch ───────────────────────────────────────────
 // WWT lazily kicks off BOTH cosmos downloads on the FIRST 3D cosmos frame:
 // the galaxy binary (catalog.aspx?Q=cosmosnewbin → 256 PointList buckets) and
@@ -597,8 +324,8 @@ export function drawSpreadSheetLayer(renderContext, opacity, flat) {
 // galaxies trickle in bucket-by-bucket for many seconds after entering 3D.
 // Prefetching both during quiet 2D time makes the first 3D entry instant.
 // The delay lets the WTML + gallery thumbnails win the network first.
-export function prefetchCosmos(delayMs = 6000) {
-  setTimeout(() => {
+export function prefetchCosmos(delayMs = 6000): number {
+  return window.setTimeout(() => {
     try {
       // Galaxy position binary; on arrival the engine builds the 256 buckets.
       Grids.initCosmosVertexBuffer();
@@ -771,9 +498,7 @@ export function layerManagerDraw(renderContext, opacity, astronomical, reference
     const ctl = WWTControl.singleton;
     const is3D = ctl && typeof ctl.get_solarSystemMode === 'function' && ctl.get_solarSystemMode();
     if (is3D && _consFigAlpha > 0) {
-      _inConsDraw = true;
-      try { drawFigures3D(renderContext); }
-      finally { _inConsDraw = false; }
+      drawFigures3D(renderContext);
     }
   }
 };
@@ -940,9 +665,8 @@ function drawFigures3D(renderContext) {
   }
   if (_figures3dVertexCount === 0) return;
 
-  // Caller must set _inConsDraw=true so SimpleLineShader.use applies _consFigAlpha.
   const lineColor = Color.load(Settings.get_globalSettings().get_constellationFigureColor());
-  SimpleLineShader.use(renderContext, _figures3dBuffer, lineColor, false);
+  SimpleLineShader.use(renderContext, _figures3dBuffer, lineColor, false, _consFigAlpha);
   renderContext.gl.drawArrays(renderContext.gl.LINES, 0, _figures3dVertexCount);
 }
 
@@ -950,137 +674,6 @@ function drawFigures3D(renderContext) {
 // in 3D mode), not via a Grids.drawStars3D wrapper — this app disables
 // `solarSystemStars`, so the engine never calls drawStars3D and any wrapper
 // there would be dead code.
-
-export function ViewMoverSlewHacked() {
-    this._upTargetTime = 0;
-    this._downTargetTime = 0;
-    this._toTargetTime = 0;
-    this._upTimeFactor = 0.6;
-    this._downTimeFactor = 0.6;
-    this._travelTimeFactor = 7;
-    this._midpointFired = false;
-    this._complete = false;
-}
-
-ViewMoverSlewHacked.create = function (from, to, duration) {
-    var temp = new ViewMoverSlewHacked();
-    temp.init(from, to);
-    if (duration) {
-      const originalTargetTime = temp._toTargetTime;
-      const upFraction = temp._upTargetTime / originalTargetTime;
-      const downFraction = temp._downTargetTime / originalTargetTime;
-      temp._upTargetTime = duration * upFraction;
-      temp._downTargetTime = duration * downFraction;
-      temp._toTargetTime = duration; 
-    }
-    return temp;
-};
-
-ViewMoverSlewHacked.createUpDown = function (from, to, upDowFactor) {
-    var temp = new ViewMoverSlew();
-    temp._upTimeFactor = temp._downTimeFactor = upDowFactor;
-    temp.init(from.copy(), to.copy());
-    return temp;
-};
-
-function logN(value, base) {
-  return Math.log(value) / Math.log(base);
-}
-
-ViewMoverSlewHacked.prototype.init = function (from, to) {
-    if (Math.abs(from.lng - to.lng) > 180) {
-        if (from.lng > to.lng) {
-            from.lng -= 360;
-        }
-        else {
-            from.lng += 360;
-        }
-    }
-    if (to.zoom <= 0) {
-        to.zoom = 360;
-    }
-    if (from.zoom <= 0) {
-        from.zoom = 360;
-    }
-    this._from = from;
-    this._to = to;
-    this._fromTime = SpaceTimeController.get_metaNow();
-    var zoomUpTarget = 360;
-    var travelTime;
-    var lngDist = Math.abs(from.lng - to.lng);
-    var latDist = Math.abs(from.lat - to.lat);
-    var distance = Math.sqrt(latDist * latDist + lngDist * lngDist);
-    zoomUpTarget = Math.ceil(Math.log(Math.max(from.zoom, to.zoom)) / Math.log(10));
-    travelTime = (distance / 180) * Math.log(WWTControl.singleton.get_zoomMax() / zoomUpTarget) * this._travelTimeFactor;
-    var rotateTime = Math.max(Math.abs(from.angle - to.angle), Math.abs(from.rotation - to.rotation));
-    var logDistUp = Math.max(Math.abs(logN(zoomUpTarget, 2) - logN(from.zoom, 2)), rotateTime);
-    this._upTargetTime = this._upTimeFactor * logDistUp;
-    this._downTargetTime = this._upTargetTime + travelTime;
-    var logDistDown = Math.abs(logN(zoomUpTarget, 2) - logN(to.zoom, 2));
-    this._toTargetTime = this._downTargetTime + Math.max((this._downTimeFactor * logDistDown), rotateTime);
-    this._fromTop = from.copy();
-    this._fromTop.zoom = zoomUpTarget;
-    this._fromTop.angle = (from.angle + to.angle) / 2;
-    this._fromTop.rotation = (from.rotation + to.rotation) / 2;
-    this._toTop = to.copy();
-    this._toTop.zoom = this._fromTop.zoom;
-    this._toTop.angle = this._fromTop.angle;
-    this._toTop.rotation = this._fromTop.rotation;
-};
-
-ViewMoverSlewHacked.prototype.get_complete = function () {
-    return this._complete;
-};
-
-ViewMoverSlewHacked.prototype.get_currentPosition = function () {
-    var elapsed = SpaceTimeController.get_metaNow() - this._fromTime;
-    var elapsedSeconds = (elapsed) / 1000;
-    if (elapsedSeconds < this._upTargetTime) {
-        // Log interpolate from from to fromTop
-        return CameraParameters.interpolate(this._from, this._fromTop, elapsedSeconds / this._upTargetTime, 3, false);
-    } else if (elapsedSeconds < this._downTargetTime) {
-        elapsedSeconds -= this._upTargetTime;
-        if (Settings.get_active().get_galacticMode() && WWTControl.singleton.renderContext.space) {
-            return CameraParameters.interpolateGreatCircle(this._fromTop, this._toTop, elapsedSeconds / (this._downTargetTime - this._upTargetTime), 3, false);
-        }
-        // interpolate linear fromTop and toTop
-        return CameraParameters.interpolate(this._fromTop, this._toTop, elapsedSeconds / (this._downTargetTime - this._upTargetTime), 3, false);
-    } else {
-        if (!this._midpointFired) {
-            this._midpointFired = true;
-            if (this._midpoint != null) {
-                this._midpoint();
-            }
-        }
-        elapsedSeconds -= this._downTargetTime;
-        // Interpolate log from toTop and to
-        var alpha = elapsedSeconds / (this._toTargetTime - this._downTargetTime);
-        if (alpha > 1) {
-            alpha = 1;
-            this._complete = true;
-            return this._to.copy();
-        }
-        return CameraParameters.interpolate(this._toTop, this._to, alpha, 3, false);
-    }
-};
-
-ViewMoverSlewHacked.prototype.get_currentDateTime = function () {
-    SpaceTimeController.updateClock();
-    return SpaceTimeController.get_now();
-},
-
-ViewMoverSlewHacked.prototype.get_midpoint = function () {
-    return this._midpoint;
-};
-
-ViewMoverSlewHacked.prototype.set_midpoint = function (value) {
-    this._midpoint = value;
-    return value;
-};
-
-ViewMoverSlewHacked.prototype.get_moveTime = function () {
-    return this._toTargetTime;
-};
 
 // ── ViewMoverCinematic ────────────────────────────────────────────────────────
 // Duck-typed IViewMover replacement for ViewMoverKenBurnsStyle. WWT's engine
@@ -1231,42 +824,4 @@ export function gotoTargetFullHacked(control, noZoom, instant, cameraParams, stu
         control.set__mover(new ViewMoverCinematic(control.renderContext.viewCamera, cameraParams, durationSec, start, end));
         control.get__mover().set_midpoint(control._mover_Midpoint.bind(control));
     }
-}
-
-// ── gotoRADecZoomCinematic ────────────────────────────────────────────────────
-// 2D search-slew helper. Mirrors the engine's WWTControl.gotoRADecZoom (see
-// index.js:68345) but routes through gotoTargetFullHacked so the slew uses
-// ViewMoverCinematic instead of ViewMoverSlew. To revert to the stock 2D
-// slew, just delete this export and its call site in selectSearchResult.
-//
-//   raHours    target RA in hours
-//   decDeg     target Dec in degrees
-//   zoomDeg    target zoom in degrees (clamped to [zoomMin, zoomMax])
-//   duration   optional seconds; if omitted, scales 1.5–4 s with angular
-//              separation (~0.6 + 0.05·angSepDeg, clamped) so nearby targets
-//              feel snappy and across-sky slews stay cinematic.
-export function gotoRADecZoomCinematic(control, raHours, decDeg, zoomDeg, duration?: number) {
-  let ra = raHours;
-  while (ra > 24) ra -= 24;
-  while (ra < 0) ra += 24;
-  const dec = Math.max(-90, Math.min(90, decDeg));
-  const zoom = Math.max(control.get_zoomMin(), Math.min(control.get_zoomMax(), zoomDeg));
-
-  const rc = control.renderContext;
-  const cam = rc.viewCamera;
-  const params = CameraParameters.create(dec, rc.rAtoViewLng(ra), zoom, cam.rotation, cam.angle, cam.opacity);
-
-  let dur = duration;
-  if (dur === undefined) {
-    const D = Math.PI / 180;
-    const ra1 = cam.get_RA() * 15 * D;
-    const ra2 = ra * 15 * D;
-    const d1 = cam.get_dec() * D;
-    const d2 = dec * D;
-    const cosSep = Math.sin(d1) * Math.sin(d2) + Math.cos(d1) * Math.cos(d2) * Math.cos(ra1 - ra2);
-    const angDeg = Math.acos(Math.max(-1, Math.min(1, cosSep))) / D;
-    dur = Math.max(1.5, Math.min(4.0, 0.6 + 0.05 * angDeg));
-  }
-
-  gotoTargetFullHacked(control, false, false, params, rc.get_foregroundImageset(), rc.get_backgroundImageset(), dur);
 }

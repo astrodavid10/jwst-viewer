@@ -49,7 +49,9 @@ SRC_DB = Path(
 STAMP_ROOT = SRC_DB.parent
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-OUT_DIR = REPO_ROOT / "public" / "cosmosweb"
+# Kept out of public/ so the disabled feature does not ship (audit J1); copy
+# to public/cosmosweb when re-enabling the COSMOS-Web menu item.
+OUT_DIR = REPO_ROOT / "optional-assets" / "cosmosweb"
 
 MAX_GALAXIES = 164155      # cap on rows emitted (positions are cheap; keep all)
 UNIQUE_SPRITES = 4096      # how many top-N galaxies get their REAL cutout

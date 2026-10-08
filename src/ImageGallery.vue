@@ -10,7 +10,7 @@
       <span class="gallery-title">
         <font-awesome-icon icon="globe" />
         Images
-        <span class="gallery-count">{{ visiblePlaces.length }}</span>
+        <span class="gallery-count">{{ visibleItems.length }}</span>
       </span>
       <font-awesome-icon
         class="gallery-chevron"
@@ -62,7 +62,7 @@
         <!-- Object-type filter chips (also the color/icon legend). Click to
              isolate one or more types; active chips highlight, none active =
              show all. (No "All" chip — saves a row of mobile real estate.) -->
-        <div class="gallery-filter">
+        <div class="gallery-filter" role="group" aria-label="Filter by object type">
           <button
             v-for="g in groupChips"
             :key="g.key"
@@ -70,50 +70,59 @@
             class="filter-chip"
             :class="{ active: isGroupActive(g.key) }"
             :style="{ '--chip-color': g.color }"
+            :aria-pressed="isGroupActive(g.key)"
+            :aria-label="`${g.label}, ${g.count} image${g.count === 1 ? '' : 's'}`"
             v-tip="g.label + ' — ' + g.count + ' image' + (g.count === 1 ? '' : 's')"
             @click="toggleGroup(g.key)"
           >
             <font-awesome-icon :icon="g.icon" />
-            <span class="chip-count">{{ g.count }}</span>
+            <span class="chip-count" aria-hidden="true">{{ g.count }}</span>
           </button>
         </div>
 
+        <!-- Announces the filtered count to screen readers (audit J4). -->
+        <p class="visually-hidden" aria-live="polite">{{ filterSummary }}</p>
+
         <div class="gallery-scroll" @wheel="onGalleryWheel">
           <div
-            v-for="place in visiblePlaces"
-            :key="placeKey(place)"
-            :class="['gallery-item', { selected: selectedKey === placeKey(place) }]"
+            v-for="item in visibleItems"
+            :key="item.key"
+            :class="['gallery-item', { selected: selectedKey === item.key }]"
             role="button"
-            :aria-label="place.get_name()"
-            @click="$emit('select', place)"
-            @keyup.enter="$emit('select', place)"
-            @keyup.space.prevent="$emit('select', place)"
-            @mouseenter="showTip($event, place)"
+            :aria-label="item.badge ? `${item.name} (${item.badge.label})` : item.name"
+            :aria-current="selectedKey === item.key ? 'true' : undefined"
+            @click="$emit('select', item.place)"
+            @keydown.enter.prevent="$emit('select', item.place)"
+            @keydown.space.prevent="$emit('select', item.place)"
+            @mouseenter="showTip($event, item.name)"
             @mouseleave="hideTip"
-            @focus="showTip($event, place)"
+            @focus="showTip($event, item.name)"
             @blur="hideTip"
             tabindex="0"
           >
+            <!-- crossorigin lets thumb-crop.ts reuse this exact response for its
+                 canvas scan instead of downloading the tile a second time (J6). -->
             <img
               class="gallery-thumb no-select"
-              :src="thumbUrl(place)"
-              :alt="place.get_name()"
+              :src="item.thumb"
+              alt=""
+              crossorigin="anonymous"
               loading="lazy"
               @load="onThumbLoad($event)"
-              @error="onThumbError(place, $event)"
+              @error="onThumbError(item.place, $event)"
             />
             <span
-              v-if="badgeFor(place)"
+              v-if="item.badge"
               class="type-badge"
-              :style="{ color: badgeFor(place).color, borderColor: badgeFor(place).color }"
-              :title="badgeFor(place).label"
+              :style="{ color: item.badge.color, borderColor: item.badge.color }"
+              aria-hidden="true"
             >
-              <font-awesome-icon :icon="badgeFor(place).icon" />
+              <font-awesome-icon :icon="item.badge.icon" />
             </span>
-            <span class="gallery-item-name no-select">{{ place.get_name() }}</span>
+            <span class="gallery-item-name no-select" aria-hidden="true">{{ item.name }}</span>
           </div>
 
-          <div v-if="visiblePlaces.length === 0" class="gallery-empty">No matches</div>
+          <div v-if="visibleItems.length === 0" class="gallery-empty">No matches</div>
         </div>
       </div>
     </transition-expand>
@@ -131,7 +140,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, PropType } from "vue";
+import { defineComponent, markRaw, PropType } from "vue";
 import { Place } from "@wwtelescope/engine";
 import {
   TYPE_META,
@@ -142,6 +151,32 @@ import {
   JwstGroup,
   JwstTypeMeta,
 } from "./jwstTypes";
+
+// Everything a gallery row needs, computed once per catalog load rather than
+// on every render (audit J18).
+interface GalleryItem {
+  place: Place;
+  key: string;
+  name: string;
+  nameLower: string;
+  badge: JwstTypeMeta | null;
+  group: JwstGroup | null;
+  thumb: string;
+}
+
+// Prefer the imageset's level-0 base tile (a sharp ~256px full-frame image)
+// over its ThumbnailUrl (a blurry 96×45). The tile URL is the imageset URL
+// template with level/x/y all 0; fall back to the thumbnail if it has no tile
+// template (onThumbError covers tiles that fail to load). The Place's own
+// Thumbnail is a generic JWST logo, so prefer the imageset's.
+function thumbUrlFor(place: Place): string {
+  const iset = place.get_studyImageset() ?? place.get_backgroundImageset();
+  const tpl = iset?.get_url() ?? "";
+  if (tpl.includes("{1}")) {
+    return tpl.replace(/\{1\}/g, "0").replace(/\{2\}/g, "0").replace(/\{3\}/g, "0");
+  }
+  return iset?.get_thumbnailUrl() || place.get_thumbnailUrl() || "";
+}
 
 // Content-cropping of letterboxed base tiles lives in thumb-crop.ts (shared
 // with the 3D description-panel thumb); results are cached per tile URL there.
@@ -201,33 +236,55 @@ export default defineComponent({
       return this.selectedGroups.length > 0;
     },
 
-    // Places passing the active chip filter AND the search box (both are
+    // One precomputed row per place (markRaw: plain data, no proxies needed).
+    items(): GalleryItem[] {
+      return markRaw(this.places.map((place) => {
+        const name = place.get_name();
+        const t = typeForName(name);
+        return {
+          place,
+          key: placeKey(place),
+          name,
+          nameLower: name.toLowerCase(),
+          badge: t ? TYPE_META[t] : null,
+          group: groupForName(name),
+          thumb: thumbUrlFor(place),
+        };
+      }));
+    },
+
+    // Items passing the active chip filter AND the search box (both are
     // ANDed: an active chip filter narrows by type, the search box narrows
     // by a case-insensitive substring match on the place name).
     // Unknown-type images are hidden while a chip filter is active.
-    visiblePlaces(): Place[] {
-      let list = this.places;
+    visibleItems(): GalleryItem[] {
+      let list = this.items;
       if (this.filtered) {
         const active = new Set(this.selectedGroups);
-        list = list.filter((p) => {
-          const g = groupForName(p.get_name());
-          return g !== null && active.has(g);
-        });
+        list = list.filter((it) => it.group !== null && active.has(it.group));
       }
       const q = this.searchQuery.trim().toLowerCase();
       if (q) {
-        list = list.filter((p) => p.get_name().toLowerCase().includes(q));
+        list = list.filter((it) => it.nameLower.includes(q));
       }
       return list;
+    },
+
+    visiblePlaces(): Place[] {
+      return this.visibleItems.map((it) => it.place);
+    },
+
+    filterSummary(): string {
+      if (!this.filtered && !this.searchQuery.trim()) { return ""; }
+      return `Showing ${this.visibleItems.length} of ${this.items.length} images`;
     },
 
     // One chip per group that actually has images, in display order, with a
     // count of how many images fall in it.
     groupChips(): { key: JwstGroup; label: string; color: string; icon: string; count: number }[] {
       const counts = {} as Record<JwstGroup, number>;
-      this.places.forEach((p) => {
-        const g = groupForName(p.get_name());
-        if (g) { counts[g] = (counts[g] ?? 0) + 1; }
+      this.items.forEach((it) => {
+        if (it.group) { counts[it.group] = (counts[it.group] ?? 0) + 1; }
       });
       return GROUP_ORDER
         .filter((key) => (counts[key] ?? 0) > 0)
@@ -254,15 +311,6 @@ export default defineComponent({
   },
 
   methods: {
-    // Exposed for the template's :key and selection-highlight comparison.
-    placeKey,
-
-    // Presentation metadata for a place's object type, or null if unclassified.
-    badgeFor(place: Place): JwstTypeMeta | null {
-      const t = typeForName(place.get_name());
-      return t ? TYPE_META[t] : null;
-    },
-
     isGroupActive(key: JwstGroup): boolean {
       return this.selectedGroups.includes(key);
     },
@@ -299,26 +347,14 @@ export default defineComponent({
       ev.preventDefault();
     },
 
-    // Prefer the imageset's level-0 base tile (a sharp ~256px full-frame image)
-    // over its ThumbnailUrl (a blurry 96×45). The tile URL is the imageset URL
-    // template with level/x/y all 0; fall back to the thumbnail if it has no
-    // tile template (onThumbError covers tiles that fail to load).
-    thumbUrl(place: Place): string {
-      const iset = place.get_studyImageset() ?? place.get_backgroundImageset();
-      const tpl = iset?.get_url() ?? "";
-      if (tpl.includes("{1}")) {
-        return tpl.replace(/\{1\}/g, "0").replace(/\{2\}/g, "0").replace(/\{3\}/g, "0");
-      }
-      // The Place's own Thumbnail is a generic JWST logo, so prefer the imageset's.
-      return iset?.get_thumbnailUrl() || place.get_thumbnailUrl() || "";
-    },
-
-    // If the base tile fails (e.g. an imageset with no level-0 tile), drop back
-    // to the WWT thumbnail once.
+    // If the base tile fails (e.g. an imageset with no level-0 tile, or a host
+    // without CORS headers), drop back to the WWT thumbnail once, loaded
+    // without CORS so a header-less host still works.
     onThumbError(place: Place, ev: Event): void {
       const img = ev.target as HTMLImageElement;
       if (img.dataset.fallback) { return; }
       img.dataset.fallback = "1";
+      img.removeAttribute("crossorigin");
       const iset = place.get_studyImageset() ?? place.get_backgroundImageset();
       img.src = iset?.get_thumbnailUrl() || place.get_thumbnailUrl() || "";
     },
@@ -328,7 +364,7 @@ export default defineComponent({
     // cached in thumb-crop.ts, so each distinct tile is processed at most once.
     onThumbLoad(ev: Event): void {
       const img = ev.target as HTMLImageElement;
-      // Skip the data-URL reload our own crop triggers, and the WWT-thumb fallback.
+      // Skip the blob-URL reload our own crop triggers, and the WWT-thumb fallback.
       if (img.dataset.cropped || img.dataset.fallback) { return; }
       croppedTileUrl(img.src).then((dataUrl) => {
         if (img.dataset.fallback) { return; }
@@ -337,12 +373,12 @@ export default defineComponent({
       });
     },
 
-    showTip(ev: Event, place: Place): void {
+    showTip(ev: Event, name: string): void {
       if (suppressHoverTips()) { return; }
       const rect = (ev.currentTarget as HTMLElement).getBoundingClientRect();
       // Anchor to the left of the item (the gallery hugs the right edge); the
       // tip's own transform pulls it fully left of and centered on the item.
-      this.tip = { show: true, name: place.get_name(), x: rect.left - 10, y: rect.top + rect.height / 2 };
+      this.tip = { show: true, name, x: rect.left - 10, y: rect.top + rect.height / 2 };
     },
     hideTip(): void {
       this.tip.show = false;
@@ -365,6 +401,7 @@ export default defineComponent({
   display: flex;
   flex-direction: column;
   max-height: calc(100vh - 2rem);
+  max-height: calc(100dvh - 2rem);
 }
 
 .gallery-header {
@@ -471,7 +508,7 @@ export default defineComponent({
   outline: none;
 
   &::placeholder {
-    color: rgba(255, 255, 255, 0.4);
+    color: rgba(255, 255, 255, 0.7);
   }
 
   &:hover {
@@ -516,8 +553,8 @@ export default defineComponent({
 .gallery-empty {
   padding: 0.6rem 0.3rem;
   text-align: center;
-  font-size: 0.72rem;
-  color: rgba(255, 255, 255, 0.45);
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.75);
 }
 
 .gallery-scroll {
@@ -541,6 +578,9 @@ export default defineComponent({
 .gallery-item {
   position: relative;
   flex: 0 0 auto;
+  /* Cheap off-screen skipping for the long list (audit J18). */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 10rem;
   border: 2px solid rgba(133, 133, 134, 0.45);
   border-radius: 6px;
   cursor: pointer;
@@ -695,9 +735,10 @@ export default defineComponent({
   .jwst-gallery {
     width: 8rem;
     max-height: 48vh;
+    max-height: 48dvh;
   }
   .gallery-item-name {
-    font-size: 0.62rem;
+    font-size: 0.75rem;
   }
   .gallery-search-input {
     font-size: 0.68rem;
@@ -716,12 +757,24 @@ export default defineComponent({
   }
   .filter-chip {
     padding: 0.16rem 0.34rem;
-    font-size: 0.62rem;
+    font-size: 0.75rem;
   }
   .type-badge {
-    width: 1rem;
-    height: 1rem;
-    font-size: 0.55rem;
+    width: 1.1rem;
+    height: 1.1rem;
+    font-size: 0.65rem;
+  }
+}
+
+/* Landscape phones / short screens (audit J7): wider than the 600px breakpoint
+   but only ~375px tall. A narrow rail that runs the full (dynamic) height. */
+@media (max-height: 500px) and (orientation: landscape) {
+  .jwst-gallery {
+    width: 8.5rem;
+    max-height: calc(100dvh - 1rem);
+  }
+  .gallery-item-name {
+    font-size: 0.75rem;
   }
 }
 </style>
