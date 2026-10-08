@@ -8,7 +8,7 @@
       role="dialog"
       aria-modal="true"
       aria-labelledby="kiosk-qr-title"
-      aria-describedby="kiosk-qr-url"
+      :aria-describedby="typeUrl ? 'kiosk-qr-type' : 'kiosk-qr-url'"
       @keydown.tab.prevent="trapFocus"
     >
       <h2 id="kiosk-qr-title" class="kiosk-qr-title">{{ displayTitle }}</h2>
@@ -26,8 +26,13 @@
         />
       </div>
 
-      <p id="kiosk-qr-url" class="kiosk-qr-url">{{ truncatedUrl }}</p>
       <p class="kiosk-qr-caption">Scan with your phone's camera</p>
+      <!-- A short address a visitor can type instead (the QR keeps the full
+           link, including the image they were looking at). -->
+      <p v-if="typeUrl" id="kiosk-qr-type" class="kiosk-qr-type">
+        or type <strong>{{ typeHost }}<wbr>{{ typePath }}</strong>
+      </p>
+      <p v-else id="kiosk-qr-url" class="kiosk-qr-url">{{ truncatedUrl }}</p>
 
       <button ref="closeBtn" type="button" class="kiosk-qr-close control-btn-like" @click="$emit('close')">
         Close
@@ -50,6 +55,8 @@ export default defineComponent({
   props: {
     url: { type: String, required: true },
     title: { type: String, default: "" },
+    // Optional short, typeable address shown instead of the encoded URL.
+    typeUrl: { type: String, default: "" },
     autoCloseMs: { type: Number, default: 45000 },
   },
   emits: ["close"],
@@ -61,6 +68,16 @@ export default defineComponent({
     };
   },
   computed: {
+    // The typeable address splits at its first "/" so a line break (if it
+    // needs one) falls there, never mid-word.
+    typeHost(): string {
+      const i = this.typeUrl.indexOf("/");
+      return i < 0 ? this.typeUrl : this.typeUrl.slice(0, i);
+    },
+    typePath(): string {
+      const i = this.typeUrl.indexOf("/");
+      return i < 0 ? "" : this.typeUrl.slice(i);
+    },
     displayTitle(): string {
       return this.title || "Scan to visit";
     },
@@ -147,6 +164,22 @@ export default defineComponent({
   font-size: 0.75rem;
   word-break: break-all;
   text-align: center;
+}
+
+.kiosk-qr-type {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.9rem;
+  text-align: center;
+
+  strong {
+    display: block;
+    margin-top: 0.2rem;
+    color: #fff;
+    font-size: 1.15rem;
+    letter-spacing: 0.01em;
+    overflow-wrap: anywhere;
+  }
 }
 
 .kiosk-qr-caption {

@@ -703,6 +703,7 @@ export default defineComponent({
    scroll list flips to a row with touch/wheel horizontal scrolling. Item
    markup, selection, and filtering are identical to the vertical gallery. */
 .jwst-gallery.kiosk {
+  position: relative;
   width: 100%;
   max-width: none;
   max-height: none;
@@ -711,8 +712,36 @@ export default defineComponent({
   border-right: none;
   border-radius: 0 0 12px 12px;
 
+  /* The filter chips share the header row (right of "Images 286") instead of
+     taking a full-width row of their own. */
+  .gallery-header {
+    min-height: 3rem;
+  }
+  .gallery-filter {
+    position: absolute;
+    top: 0;
+    left: 9.5rem;
+    right: 3rem;
+    height: 3rem;
+    align-items: center;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding: 0 0.4rem;
+    border-bottom: none;
+    z-index: 1;
+  }
+  .filter-chip {
+    flex: 0 0 auto;
+    font-size: 0.85rem;
+    padding: 0.3rem 0.6rem;
+  }
+
   .gallery-scroll {
     flex-direction: row;
+    /* Cards keep their own height; stretching them to the tallest one left a
+       dead band under every name. */
+    align-items: flex-start;
     overflow-x: auto;
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch; /* momentum scrolling on the touchscreen */
@@ -723,8 +752,15 @@ export default defineComponent({
     height: 6px;
   }
 
+  /* Bigger touch targets on the exhibit screen. The off-screen size estimate
+     (content-visibility) matches a strip card: 10rem wide, 4:3 thumb + name. */
   .gallery-item {
-    flex: 0 0 7.5rem;
+    flex: 0 0 10rem;
+    contain-intrinsic-size: auto 10rem auto 9.4rem;
+  }
+  .gallery-item-name {
+    font-size: 0.85rem;
+    padding: 0.3rem 0.45rem;
   }
 }
 
