@@ -57,6 +57,7 @@ from `localhost` or a LAN address can't work on a visitor's phone.
 |---|---|
 | `?image=<name>` | Open on that image (name match ignores case and quote style). Kept in sync while browsing; the Share button copies it. |
 | `?mode=3d` | Start in the 3D view. |
+| `?galaxy=lite` / `?galaxy=full` | 3D galaxy tier. **lite**: a flat Gaia Milky Way from a self-hosted 2K texture, no volume slices, sprites or SDSS galaxy cosmos (≈¼ the GPU memory, ~2 MB less download); markers, fly-ins, constellations and the kiosk interlude work the same. Without the parameter, lite is chosen automatically on devices with ≤ 4 GB RAM, no WebGL2, or a max texture size under 4096. Combines with `?kiosk=1`. |
 | `?kiosk=1` | Museum mode: no intro, external links become QR codes, idle → attract loop, nightly 3 AM reload. |
 | `?kioskIdle=<s>` / `?kiosk3dEvery=<n>` | Kiosk testing overrides. |
 | `?kioskStats=1` | Staff usage-stats panel (anonymous, local to the device). |

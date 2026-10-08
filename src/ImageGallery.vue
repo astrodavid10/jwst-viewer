@@ -728,15 +728,41 @@ export default defineComponent({
   }
 }
 
+/* Narrow gallery (phones, landscape phones): drop the header icon so the image
+   count fits, and keep the filter chips on one scrollable row so the
+   thumbnails get the height. */
+.narrow-gallery() {
+  .gallery-header {
+    padding: 0.45rem 0.5rem;
+  }
+  .gallery-title {
+    gap: 0.3rem;
+    font-size: 0.9rem;
+    > svg:first-child {
+      display: none;
+    }
+  }
+  .jwst-gallery:not(.kiosk) .gallery-filter {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding-bottom: 0.3rem;
+  }
+  .jwst-gallery:not(.kiosk) .filter-chip {
+    flex: 0 0 auto;
+  }
+}
+
 @media (max-width: 600px) {
   /* Smaller tiles and a height cap so the gallery occupies only the top of the
      screen, leaving the bottom clear for the description panel + slider (which
      stay below it at their normal z-index). */
   .jwst-gallery {
     width: 8rem;
-    max-height: 48vh;
-    max-height: 48dvh;
+    max-height: 42vh;
+    max-height: 42dvh;
   }
+  .narrow-gallery();
   .gallery-item-name {
     font-size: 0.75rem;
   }
@@ -769,6 +795,7 @@ export default defineComponent({
 /* Landscape phones / short screens (audit J7): wider than the 600px breakpoint
    but only ~375px tall. A narrow rail that runs the full (dynamic) height. */
 @media (max-height: 500px) and (orientation: landscape) {
+  .narrow-gallery();
   .jwst-gallery {
     width: 8.5rem;
     max-height: calc(100dvh - 1rem);

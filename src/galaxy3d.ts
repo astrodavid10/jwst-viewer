@@ -47,6 +47,7 @@ import { MW_ANGLE_SCALE, UNITS_PER_KPC, imageUnitsToWorld, obliquityRad } from "
 import { drawGalaxySprites, rebuildGalaxySprites } from "./galaxy-sprites";
 import { drawGalaxyDebugArms } from "./galaxy-debug";
 import { DEBUG } from "./debug";
+import { GALAXY_LITE } from "./quality";
 
 // Master switch (kept from v2; jwst-viewer's install path is unconditional).
 export const GALAXY3D_ENABLED = true;
@@ -327,7 +328,8 @@ function uploadMesh(): void {
  * kill switch, or the shader failed to link on this GPU).
  */
 export function ensembleHandlesBasePlane(): boolean {
-  if (!GALAXY3D_ENABLED || linkFailed || typeof window === "undefined") { return false; }
+  // Lite tier (quality.ts): WWT's own flat galaxy quad, no slices or sprites.
+  if (!GALAXY3D_ENABLED || GALAXY_LITE || linkFailed || typeof window === "undefined") { return false; }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (window as any).__gx !== false;
 }
@@ -341,7 +343,7 @@ export function ensembleHandlesBasePlane(): boolean {
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function drawGalaxyEnsemble(renderContext: any, opacity: number): void {
-  if (!GALAXY3D_ENABLED || typeof window === "undefined") { return; }
+  if (!GALAXY3D_ENABLED || GALAXY_LITE || typeof window === "undefined") { return; }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const w = window as any;
   if (w.__gx === false) { return; }

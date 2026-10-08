@@ -25,6 +25,7 @@ import { drawFootprints } from "./footprints";
 import { MW_ANGLE_SCALE, imageUnitsToWorld } from "./galaxy-frame";
 import { drawGalaxyEnsemble, ensembleHandlesBasePlane } from "./galaxy3d";
 import { DEBUG } from "./debug";
+import { GALAXY_LITE } from "./quality";
 
 // ── Constellation figure fade ─────────────────────────────────────────────────
 // WWT's SimpleLineShader hardcodes alpha=1 for sky lines. We patch it once here
@@ -187,6 +188,8 @@ function _farZoomFadeT(zoom: number): number {
 // and is computed directly in layerManagerDraw, right at the drawMarkerCloud()
 // call site.
 function _patchedDrawCosmos3D(renderContext, _opacity) {
+  // Lite tier (quality.ts): no SDSS cosmos, so none of its 256 textures load.
+  if (GALAXY_LITE) return;
   const ctl = WWTControl.singleton;
   if (!(ctl && typeof ctl.get_solarSystemMode === 'function' && ctl.get_solarSystemMode())) return;
   const t = _farZoomFadeT(renderContext.viewCamera.zoom);

@@ -217,123 +217,176 @@
         </div>
       </transition>
 
-      <!-- Sky survey selector -->
-      <transition name="fade">
-        <div class="survey-menu" v-if="showSurveyMenu" @keydown.esc="showSurveyMenu = false">
-          <div class="survey-head">
-            <span class="survey-label"><font-awesome-icon icon="star" /> Sky survey</span>
-            <button class="survey-close" @click="showSurveyMenu = false" aria-label="Close"><font-awesome-icon icon="times" /></button>
+      <!-- Bottom dock: the survey menu or the description panel, then the
+           opacity or compare bar, stacked in one flex column so they can't
+           overlap each other. layoutDock() sizes it against the gallery so it
+           can't run under the thumbnails either. -->
+      <div ref="bottomDock" class="bottom-dock">
+        <!-- Sky survey selector -->
+        <transition name="fade">
+          <div class="survey-menu" v-if="showSurveyMenu" @keydown.esc="showSurveyMenu = false">
+            <div class="survey-head">
+              <span class="survey-label"><font-awesome-icon icon="star" /> Sky survey</span>
+              <button class="survey-close" @click="showSurveyMenu = false" aria-label="Close"><font-awesome-icon icon="times" /></button>
+            </div>
+            <ul id="survey-menu-list" class="survey-list">
+              <li v-for="bg in backgroundImagesets" :key="bg.imagesetName">
+                <button
+                  type="button"
+                  :class="['survey-option', { active: curBackgroundImagesetName === bg.imagesetName }]"
+                  @click="selectSurvey(bg.imagesetName)"
+                >
+                  <font-awesome-icon icon="check" class="survey-check" />
+                  <span>{{ bg.displayName }}</span>
+                </button>
+              </li>
+            </ul>
           </div>
-          <ul id="survey-menu-list" class="survey-list">
-            <li v-for="bg in backgroundImagesets" :key="bg.imagesetName">
-              <button
-                type="button"
-                :class="['survey-option', { active: curBackgroundImagesetName === bg.imagesetName }]"
-                @click="selectSurvey(bg.imagesetName)"
-              >
-                <font-awesome-icon icon="check" class="survey-check" />
-                <span>{{ bg.displayName }}</span>
-              </button>
-            </li>
-          </ul>
-        </div>
-      </transition>
+        </transition>
 
-      <!-- Description / credits panel -->
-      <transition name="fade">
-        <div class="description-panel" v-if="selectedPlace && showDescription" aria-labelledby="desc-title">
-          <button class="desc-close" @click="showDescription = false" aria-label="Close"><font-awesome-icon icon="times" /></button>
-          <!-- Guided tour (audit J8): caption + Back/Next/Exit above the
-               regular description. -->
-          <div v-if="tourActive" class="tour-strip">
-            <div class="tour-head">
-              <span class="tour-label"><font-awesome-icon icon="route" /> Guided tour · {{ tourIdx + 1 }} of {{ tourPlaces.length }}</span>
-              <button type="button" class="tour-exit" @click="stopTour">Exit tour</button>
+        <!-- Description / credits panel -->
+        <transition name="fade">
+          <div class="description-panel" v-if="selectedPlace && showDescription" aria-labelledby="desc-title">
+            <button class="desc-close" @click="showDescription = false" aria-label="Close"><font-awesome-icon icon="times" /></button>
+            <!-- Guided tour (audit J8): caption + Back/Next/Exit above the
+                 regular description. -->
+            <div v-if="tourActive" class="tour-strip">
+              <div class="tour-head">
+                <span class="tour-label"><font-awesome-icon icon="route" /> Guided tour · {{ tourIdx + 1 }} of {{ tourPlaces.length }}</span>
+                <button type="button" class="tour-exit" @click="stopTour">Exit tour</button>
+              </div>
+              <p class="tour-caption">{{ tourCaption }}</p>
+              <div class="tour-nav">
+                <button type="button" class="tour-btn" :disabled="tourIdx === 0" @click="tourStep(-1)">
+                  <font-awesome-icon icon="chevron-left" /> Back
+                </button>
+                <button type="button" class="tour-btn primary" @click="tourStep(1)">
+                  {{ tourIdx === tourPlaces.length - 1 ? 'Finish' : 'Next' }} <font-awesome-icon icon="chevron-right" />
+                </button>
+              </div>
             </div>
-            <p class="tour-caption">{{ tourCaption }}</p>
-            <div class="tour-nav">
-              <button type="button" class="tour-btn" :disabled="tourIdx === 0" @click="tourStep(-1)">
-                <font-awesome-icon icon="chevron-left" /> Back
+            <div class="desc-head">
+              <!-- P3.4: step to the previous image in the gallery's current
+                   visible list (wraparound). Also bound to ArrowLeft. -->
+              <button
+                v-if="!tourActive"
+                class="desc-step desc-step-prev"
+                aria-label="Previous image"
+                v-tip="'Previous image'"
+                @click="stepImage(-1)"
+              >
+                <font-awesome-icon icon="chevron-left" />
               </button>
-              <button type="button" class="tour-btn primary" @click="tourStep(1)">
-                {{ tourIdx === tourPlaces.length - 1 ? 'Finish' : 'Next' }} <font-awesome-icon icon="chevron-right" />
+              <button
+                v-if="mode3D && selectedPlace"
+                type="button"
+                class="desc-thumb-btn"
+                aria-label="View this image on the sky"
+                v-tip="'View in 2D'"
+                @click="viewIn2D"
+              >
+                <img
+                  class="desc-thumb no-select"
+                  :src="markerThumb(selectedPlace)"
+                  alt=""
+                  crossorigin="anonymous"
+                  @load="onDescThumbLoad"
+                />
+              </button>
+              <h2 id="desc-title" class="desc-title">{{ selectedName }}</h2>
+              <!-- P3.4: step to the next image (wraparound). Also bound to
+                   ArrowRight. margin pushes it clear of the absolute .desc-close X. -->
+              <button
+                v-if="!tourActive"
+                class="desc-step desc-step-next"
+                aria-label="Next image"
+                v-tip="'Next image'"
+                @click="stepImage(1)"
+              >
+                <font-awesome-icon icon="chevron-right" />
+              </button>
+            </div>
+            <div ref="descBody" class="desc-body">
+            <p class="desc-distance" v-if="distanceLabel">{{ distanceLabel }}</p>
+            <p class="desc-text">{{ currentMeta.description || 'No description available for this image.' }}</p>
+            <p class="desc-credits" v-if="currentMeta.credits || safeCreditsUrl">
+              <em>Credits: {{ currentMeta.credits }}</em>
+              <a
+                v-if="safeCreditsUrl"
+                :href="safeCreditsUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="links desc-learn"
+              ><font-awesome-icon icon="arrow-up-right-from-square" /> Learn more</a>
+            </p>
+            </div>
+            <div class="desc-actions">
+              <!-- In kiosk mode "View in 2D" lives in the top-center bar instead
+                   (easier to discover on the exhibit screen). -->
+              <button v-if="mode3D && !kioskMode" type="button" class="desc-view2d" @click="viewIn2D">
+                <font-awesome-icon icon="image" /> View in 2D
+              </button>
+              <button
+                v-if="!mode3D && !compareActive && compareCandidates.length"
+                type="button"
+                class="desc-view2d"
+                v-tip="'Blend with another image of the same target'"
+                @click="startCompare()"
+              >
+                <font-awesome-icon icon="table-columns" /> Compare ({{ compareCandidates.length }})
+              </button>
+              <button v-if="!kioskMode" type="button" class="desc-view2d" @click="shareView">
+                <font-awesome-icon icon="share-nodes" /> {{ shareStatus || 'Share' }}
               </button>
             </div>
           </div>
-          <div class="desc-head">
-            <!-- P3.4: step to the previous image in the gallery's current
-                 visible list (wraparound). Also bound to ArrowLeft. -->
-            <button
-              v-if="!tourActive"
-              class="desc-step desc-step-prev"
-              aria-label="Previous image"
-              v-tip="'Previous image'"
-              @click="stepImage(-1)"
+        </transition>
+
+        <!-- Crossfade opacity slider -->
+        <transition name="fade">
+          <div class="crossfade-bar" v-if="showCrossfade && !mode3D && !compareActive">
+            <span class="crossfade-text">JWST opacity</span>
+            <input
+              class="opacity-range"
+              type="range"
+              min="0"
+              max="100"
+              v-model.number="foregroundOpacity"
+              aria-label="JWST image opacity"
+            />
+          </div>
+        </transition>
+
+        <!-- Compare bar (audit J9): blend the current image (left end of the
+             slider) with another image of the same target (right end). -->
+        <transition name="fade">
+          <div class="compare-bar" v-if="compareActive && !mode3D">
+            <span class="compare-name" :title="selectedName">{{ selectedName }}</span>
+            <input
+              class="opacity-range"
+              type="range"
+              min="0"
+              max="100"
+              v-model.number="compareOpacity"
+              aria-label="Blend between the two images"
+            />
+            <select
+              class="compare-select"
+              :value="compareKey"
+              aria-label="Image to compare with"
+              @change="onCompareSelect"
             >
-              <font-awesome-icon icon="chevron-left" />
+              <option v-for="p in compareCandidates" :key="placeKey(p)" :value="placeKey(p)">{{ p.get_name() }}</option>
+            </select>
+            <button type="button" class="compare-icon-btn" aria-label="Make the compared image the main one" v-tip="'Swap'" @click="swapCompare">
+              <font-awesome-icon icon="right-left" />
             </button>
-            <button
-              v-if="mode3D && selectedPlace"
-              type="button"
-              class="desc-thumb-btn"
-              aria-label="View this image on the sky"
-              v-tip="'View in 2D'"
-              @click="viewIn2D"
-            >
-              <img
-                class="desc-thumb no-select"
-                :src="markerThumb(selectedPlace)"
-                alt=""
-                crossorigin="anonymous"
-                @load="onDescThumbLoad"
-              />
-            </button>
-            <h2 id="desc-title" class="desc-title">{{ selectedName }}</h2>
-            <!-- P3.4: step to the next image (wraparound). Also bound to
-                 ArrowRight. margin pushes it clear of the absolute .desc-close X. -->
-            <button
-              v-if="!tourActive"
-              class="desc-step desc-step-next"
-              aria-label="Next image"
-              v-tip="'Next image'"
-              @click="stepImage(1)"
-            >
-              <font-awesome-icon icon="chevron-right" />
+            <button type="button" class="compare-icon-btn" aria-label="Exit compare" v-tip="'Exit compare'" @click="exitCompare">
+              <font-awesome-icon icon="times" />
             </button>
           </div>
-          <p class="desc-distance" v-if="distanceLabel">{{ distanceLabel }}</p>
-          <p class="desc-text">{{ currentMeta.description || 'No description available for this image.' }}</p>
-          <p class="desc-credits" v-if="currentMeta.credits || safeCreditsUrl">
-            <em>Credits: {{ currentMeta.credits }}</em>
-            <a
-              v-if="safeCreditsUrl"
-              :href="safeCreditsUrl"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="links desc-learn"
-            ><font-awesome-icon icon="arrow-up-right-from-square" /> Learn more</a>
-          </p>
-          <div class="desc-actions">
-            <!-- In kiosk mode "View in 2D" lives in the top-center bar instead
-                 (easier to discover on the exhibit screen). -->
-            <button v-if="mode3D && !kioskMode" type="button" class="desc-view2d" @click="viewIn2D">
-              <font-awesome-icon icon="image" /> View in 2D
-            </button>
-            <button
-              v-if="!mode3D && !compareActive && compareCandidates.length"
-              type="button"
-              class="desc-view2d"
-              v-tip="'Blend with another image of the same target'"
-              @click="startCompare()"
-            >
-              <font-awesome-icon icon="table-columns" /> Compare ({{ compareCandidates.length }})
-            </button>
-            <button v-if="!kioskMode" type="button" class="desc-view2d" @click="shareView">
-              <font-awesome-icon icon="share-nodes" /> {{ shareStatus || 'Share' }}
-            </button>
-          </div>
-        </div>
-      </transition>
+        </transition>
+      </div>
 
       <!-- 3D marker hover label (thumbnail + name, anchored at the dot) -->
       <div
@@ -344,51 +397,6 @@
         <img v-if="hover3D.thumb" class="marker-tip-thumb" :src="hover3D.thumb" alt="" />
         <span class="marker-tip-name">{{ hover3D.name }}<span v-if="hover3D.hint" class="marker-tip-hint">{{ hover3D.hint }}</span></span>
       </div>
-
-      <!-- Crossfade opacity slider -->
-      <transition name="fade">
-        <div class="crossfade-bar" v-if="showCrossfade && !mode3D && !compareActive">
-          <span class="crossfade-text">JWST opacity</span>
-          <input
-            class="opacity-range"
-            type="range"
-            min="0"
-            max="100"
-            v-model.number="foregroundOpacity"
-            aria-label="JWST image opacity"
-          />
-        </div>
-      </transition>
-
-      <!-- Compare bar (audit J9): blend the current image (left end of the
-           slider) with another image of the same target (right end). -->
-      <transition name="fade">
-        <div class="compare-bar" v-if="compareActive && !mode3D">
-          <span class="compare-name" :title="selectedName">{{ selectedName }}</span>
-          <input
-            class="opacity-range"
-            type="range"
-            min="0"
-            max="100"
-            v-model.number="compareOpacity"
-            aria-label="Blend between the two images"
-          />
-          <select
-            class="compare-select"
-            :value="compareKey"
-            aria-label="Image to compare with"
-            @change="onCompareSelect"
-          >
-            <option v-for="p in compareCandidates" :key="placeKey(p)" :value="placeKey(p)">{{ p.get_name() }}</option>
-          </select>
-          <button type="button" class="compare-icon-btn" aria-label="Make the compared image the main one" v-tip="'Swap'" @click="swapCompare">
-            <font-awesome-icon icon="right-left" />
-          </button>
-          <button type="button" class="compare-icon-btn" aria-label="Exit compare" v-tip="'Exit compare'" @click="exitCompare">
-            <font-awesome-icon icon="times" />
-          </button>
-        </div>
-      </transition>
 
       <!-- Kiosk-only top-center bar, fixed just below the thumbnail strip:
            the "take it home" QR pill (a QR of the public URL so a guest can
@@ -476,6 +484,7 @@ import {
   withTimeout, fetchText, hasWebGL, describeBootError, scheduleKioskRetry, markBootSucceeded,
 } from "./boot";
 import { DEBUG } from "./debug";
+import { GALAXY_LITE, GALAXY_TIER, gaiaMilkyWayUrl } from "./quality";
 
 interface ImageMeta {
   description: string;
@@ -693,8 +702,6 @@ const ECLIPTIC_RAD = 23.4392911 * (Math.PI / 180);
 // The near end is dropped so you can dive right up to the closest debris discs.
 const MIN_ZOOM_3D = 1000;
 const MAX_ZOOM_3D = 1e16;
-// High-res Gaia Milky Way panorama for the 3D backdrop.
-const GAIA_MILKY_WAY_URL = "https://data1.wwtassets.org/packages/2025/01_gaia_milky_way/Gaia-HighContrast-MilkyWay-4k.jpg";
 // Opening 3D view: looking toward the galactic-center region, zoomed way out.
 const POSITION_3D = { raRad: 280 * (Math.PI / 180), decRad: -50 * (Math.PI / 180), zoomDeg: 289555092.0 * 6 };
 // viewCamera equivalent of POSITION_3D (lat/lng/zoom, not raRad/decRad/zoomDeg),
@@ -912,6 +919,8 @@ export default defineComponent({
 
       // Polite screen-reader announcements (selection changes, tour steps).
       liveMessage: "",
+      // Keeps the bottom dock clear of the gallery (layoutDock).
+      dockObserver: null as ResizeObserver | null,
     };
   },
 
@@ -977,6 +986,16 @@ export default defineComponent({
     }
 
     this.boot();
+
+    // Re-fit the bottom dock whenever the gallery or the window changes size
+    // (gallery expand/collapse, filtering, rotation, mobile address bar).
+    const gallery = (this.$el as HTMLElement).querySelector(".gallery-wrap");
+    if (gallery && "ResizeObserver" in window) {
+      this.dockObserver = new ResizeObserver(() => this.layoutDock());
+      this.dockObserver.observe(gallery);
+    }
+    window.addEventListener("resize", this.layoutDock);
+    this.$nextTick(() => this.layoutDock());
   },
 
   beforeUnmount() {
@@ -988,6 +1007,8 @@ export default defineComponent({
     this.kioskCleanups = [];
     window.removeEventListener("keydown", this.onGlobalKeydown);
     window.removeEventListener("pointerdown", this.onGlobalPointerdown);
+    window.removeEventListener("resize", this.layoutDock);
+    this.dockObserver?.disconnect();
     window.clearTimeout(this.positionSetTimer);
     window.clearInterval(this.figures3DPollTimer);
     window.clearTimeout(this.figures3DGiveUpTimer);
@@ -1206,6 +1227,10 @@ export default defineComponent({
     // where the URL carries the kiosk flags and must survive the 3 AM reload).
     selectedKey(): void {
       this.syncUrl();
+      // A new image starts its description at the top (and the tour caption,
+      // which sits above it, is never scrolled away).
+      const body = this.$refs.descBody as HTMLElement | undefined;
+      if (body) { body.scrollTop = 0; }
     },
     mode3D(): void {
       this.syncUrl();
@@ -1326,6 +1351,39 @@ export default defineComponent({
     placeByName(name: string): Place | null {
       const n = normalizeName(name);
       return this.places.find((p) => normalizeName(p.get_name()) === n) ?? null;
+    },
+
+    // Keep the bottom dock (description, survey menu, opacity/compare bars)
+    // clear of the gallery at every size. Wide enough screens: the dock lives
+    // in the strip left of the gallery, under the top-left controls. Narrow
+    // (portrait phone) screens: full width, below the bottom of the gallery.
+    // Kiosk: full width, below the thumbnail strip and its button bar.
+    layoutDock(): void {
+      const root = this.$el as HTMLElement | undefined;
+      const main = root?.querySelector?.("#main-content") as HTMLElement | null;
+      const gallery = root?.querySelector?.(".gallery-wrap") as HTMLElement | null;
+      const controls = root?.querySelector?.(".top-left-controls") as HTMLElement | null;
+      if (!main || !gallery || !controls) { return; }
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const gap = 12;
+      const g = gallery.getBoundingClientRect();
+      let left = 16;
+      let right = 16;
+      let top: number;
+      if (this.kioskMode) {
+        const bar = root?.querySelector?.(".kiosk-top-bar") as HTMLElement | null;
+        top = Math.max(g.bottom, bar ? bar.getBoundingClientRect().bottom : 0, controls.getBoundingClientRect().bottom);
+      } else if (vw > 600) {
+        right = vw - g.left + gap;
+        top = controls.getBoundingClientRect().bottom;
+      } else {
+        left = right = 8;
+        top = Math.max(g.bottom, controls.getBoundingClientRect().bottom);
+      }
+      main.style.setProperty("--dock-left", `${left}px`);
+      main.style.setProperty("--dock-right", `${Math.max(left, right)}px`);
+      main.style.setProperty("--dock-max-h", `${Math.max(120, vh - top - gap - 12)}px`);
     },
 
     labelCanvas(): void {
@@ -1634,17 +1692,23 @@ export default defineComponent({
       // Kiosk warms at boot: stagger so the catalog + start tiles win the network.
       const delay = this.kioskMode && !force ? 6000 : 0;
 
+      // Gaia Milky Way backdrop: 4K for the full galaxy, a self-hosted 2K copy
+      // for the lite tier (quality.ts).
       this.warm3DTimers.push(window.setTimeout(() => {
-        Grids._milkyWayImage = Texture.fromUrl(GAIA_MILKY_WAY_URL);
+        Grids._milkyWayImage = Texture.fromUrl(gaiaMilkyWayUrl());
       }, delay));
-      this.warm3DTimers.push(prefetchCosmos(delay));
-      // Galaxy sprite atlas paint + structure build is pure canvas/math; run it
-      // in idle time so the first 3D draw only uploads buffers.
-      const idle = (window as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => void }).requestIdleCallback;
-      if (typeof idle === "function") {
-        idle(() => prewarmGalaxySprites(), { timeout: 10000 });
-      } else {
-        this.warm3DTimers.push(window.setTimeout(() => prewarmGalaxySprites(), delay + 500));
+      // The lite tier never draws the SDSS cosmos or the galaxy sprites, so
+      // it skips their downloads and atlas build entirely.
+      if (!GALAXY_LITE) {
+        this.warm3DTimers.push(prefetchCosmos(delay));
+        // Galaxy sprite atlas paint + structure build is pure canvas/math; run
+        // it in idle time so the first 3D draw only uploads buffers.
+        const idle = (window as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => void }).requestIdleCallback;
+        if (typeof idle === "function") {
+          idle(() => prewarmGalaxySprites(), { timeout: 10000 });
+        } else {
+          this.warm3DTimers.push(window.setTimeout(() => prewarmGalaxySprites(), delay + 500));
+        }
       }
       // Precompute the 3D constellation line geometry so the first toggle in
       // 3D fades in smoothly. Poll until the star + figure files land (≤ 30 s).
@@ -2140,6 +2204,7 @@ export default defineComponent({
       });
       const info = {
         mode3D: this.mode3D,
+        galaxyTier: GALAXY_TIER,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         solarSystemMode: (ctl as any).get_solarSystemMode?.(),
         markerCount: this.markerPoints.length,
@@ -2824,6 +2889,9 @@ export default defineComponent({
   border: 1px solid var(--accent-color);
   border-radius: 10px;
   box-shadow: 0 0 12px rgba(0, 0, 0, 0.6);
+  max-height: calc(100vh - 4.5rem);
+  max-height: calc(100dvh - 4.5rem);
+  overflow-y: auto;
 
   &.show {
     display: block;
@@ -3073,18 +3141,15 @@ export default defineComponent({
 
 /* Survey menu — themed to match the gallery / hamburger menu panels */
 .survey-menu {
-  position: absolute;
-  bottom: 4.5rem;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 13;
-  width: 16rem;
-  max-width: 88vw;
+  width: min(16rem, 100%);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   background: rgba(4, 6, 24, 0.92);
   backdrop-filter: blur(6px);
   border: 1px solid var(--accent-color);
   border-radius: 10px;
-  box-shadow: 0 0 12px rgba(0, 0, 0, 0.6);
   padding: 0.4rem;
   pointer-events: auto;
 }
@@ -3116,6 +3181,8 @@ export default defineComponent({
   margin: 0;
   padding: 0;
   max-height: 40vh;
+  min-height: 0;
+  flex: 1 1 auto;
   overflow-y: auto;
 }
 
@@ -3171,16 +3238,35 @@ export default defineComponent({
 }
 
 /* Description panel */
-.description-panel {
+/* Bottom dock (see layoutDock): one flex column for the survey menu or the
+   description panel, then the opacity or compare bar. Children shrink rather
+   than overlap; the empty part of the dock lets clicks through to the sky. */
+.bottom-dock {
   position: absolute;
-  bottom: 4.5rem;
-  left: 50%;
-  transform: translateX(-50%);
+  left: var(--dock-left, 1rem);
+  right: var(--dock-right, 1rem);
+  bottom: 0.75rem;
   z-index: 10;
-  width: min(60ch, 88vw);
-  max-height: 32vh;
-  max-height: 32dvh;
-  overflow-y: auto;
+  max-height: var(--dock-max-h, calc(100vh - 5rem));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+
+.description-panel {
+  position: relative;
+  width: min(60ch, 100%);
+  /* The description gets at most ~40% of the screen so the image stays in
+     view; inside the dock it shrinks further when space is short. */
+  max-height: 40vh;
+  max-height: 40dvh;
+  min-height: 0;
+  flex: 0 1 auto;
+  display: flex;
+  flex-direction: column;
   background: rgba(4, 6, 24, 0.88);
   backdrop-filter: blur(6px);
   border: 1px solid var(--accent-color);
@@ -3188,6 +3274,14 @@ export default defineComponent({
   padding: 0.75rem 1rem 0.9rem;
   color: #eaeaea;
   pointer-events: auto;
+}
+
+/* Only the description text scrolls; title, tour caption and actions stay put. */
+.desc-body {
+  flex: 1 1 auto;
+  min-height: 2.5rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .desc-close {
@@ -3298,8 +3392,8 @@ export default defineComponent({
    gallery before it moved to the top strip). Text sizes stay as-is for
    readability; the panel still scrolls internally when a description is long. */
 .kiosk .description-panel {
-  width: min(48ch, 64vw);
-  max-height: 20vh;
+  width: min(48ch, 100%);
+  max-height: 24vh;
 }
 
 .desc-learn {
@@ -3372,15 +3466,12 @@ export default defineComponent({
 
 /* Compare bar (audit J9): sits where the crossfade bar does. */
 .compare-bar {
-  position: absolute;
-  bottom: 1rem;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 9;
+  flex: none;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.6rem;
-  width: min(92vw, 52rem);
+  gap: 0.5rem 0.6rem;
+  width: min(52rem, 100%);
   background: rgba(4, 6, 24, 0.88);
   backdrop-filter: blur(6px);
   border: 1px solid var(--accent-color2);
@@ -3398,7 +3489,7 @@ export default defineComponent({
   text-overflow: ellipsis;
 }
 .compare-select {
-  flex: 0 1 14rem;
+  flex: 1 1 10rem;
   min-width: 0;
   padding: 0.25rem 0.4rem;
   border-radius: 6px;
@@ -3441,15 +3532,11 @@ export default defineComponent({
 
 /* Crossfade slider */
 .crossfade-bar {
-  position: absolute;
-  bottom: 1rem;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 9;
+  flex: none;
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  width: min(55vw, 36rem);
+  width: min(36rem, 100%);
   background: rgba(4, 6, 24, 0.82);
   backdrop-filter: blur(6px);
   border: 1px solid var(--accent-color);
@@ -3621,8 +3708,8 @@ export default defineComponent({
      it. The gallery is also height-capped on mobile (see ImageGallery.vue) so
      it no longer runs down over the bottom panels. */
   .description-panel {
-    width: min(60ch, 86vw);
-    max-height: 24vh;
+    max-height: none;
+    padding: 0.6rem 0.8rem 0.7rem;
   }
   .desc-title {
     font-size: 0.98rem;
@@ -3630,16 +3717,7 @@ export default defineComponent({
   .desc-text {
     font-size: 0.8rem;
   }
-  .crossfade-bar {
-    width: 80vw;
-  }
-  /* The opacity slider spans 80vw here and covers the corner logos — hide
-     them on mobile (the splash modal still carries CosmicDS/WWT attribution). */
-  .bottom-logos {
-    display: none;
-  }
   .compare-bar {
-    flex-wrap: wrap;
     border-radius: 14px;
     padding: 0.5rem 0.75rem;
   }
@@ -3662,25 +3740,19 @@ export default defineComponent({
     top: 0.5rem;
     right: 0.5rem;
   }
+  /* Short screens: keep most of the height for the image itself. */
   .description-panel {
-    left: 0.5rem;
-    transform: none;
-    bottom: 3.4rem;
-    width: min(60ch, calc(100vw - 10.5rem));
-    max-height: calc(100dvh - 7rem);
+    max-height: 52dvh;
+    padding: 0.5rem 0.8rem 0.6rem;
   }
-  .crossfade-bar,
-  .compare-bar {
-    left: 0.5rem;
-    transform: none;
-    bottom: 0.5rem;
-    width: min(36rem, calc(100vw - 10.5rem));
+  .tour-caption {
+    font-size: 0.85rem;
   }
-  .survey-menu {
-    left: 0.5rem;
-    transform: none;
-    bottom: 3.4rem;
-  }
+}
+
+/* The corner logos sit under the dock's bars until the screen is wide enough
+   for the dock to stay clear of them (the intro still credits CosmicDS/WWT). */
+@media (max-width: 1000px) {
   .bottom-logos {
     display: none;
   }
