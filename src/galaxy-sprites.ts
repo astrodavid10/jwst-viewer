@@ -27,6 +27,7 @@
 import * as Engine from "@wwtelescope/engine";
 import { buildGalaxyAtlas, GalaxyAtlas } from "./galaxy-atlas";
 import { buildGalaxySprites, GalaxySprite } from "./galaxy-structure";
+import { DEBUG } from "./debug";
 
 const IS_COARSE_POINTER = (typeof window !== "undefined")
   && typeof window.matchMedia === "function"
@@ -147,13 +148,15 @@ function compile(ctx: any, type: number, src: string): any {
 function init(ctx: any): void {
   // Install the diagnostic hook FIRST so __gxSpriteInfo() is always queryable —
   // even on the unsupported path below (where it previously was never defined,
-  // making the very failure it reports invisible).
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (window as any).__gxSpriteInfo = (): unknown => ({
-    initialized, unsupported, buildFailed, built, dustCount, glowCount,
-    isGl2, extPresent: !!ext, progOk: !!prog,
-    locs: { aCorner, aBaseUV, iPos, iSize, iColor, iUV },
-  });
+  // making the very failure it reports invisible). ?debug=1 only (audit E7).
+  if (DEBUG) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__gxSpriteInfo = (): unknown => ({
+      initialized, unsupported, buildFailed, built, dustCount, glowCount,
+      isGl2, extPresent: !!ext, progOk: !!prog,
+      locs: { aCorner, aBaseUV, iPos, iSize, iColor, iUV },
+    });
+  }
 
   // Instancing is core in WebGL2 (ANGLE_instanced_arrays is NOT exposed there —
   // getExtension returns null); only WebGL1 needs the extension.

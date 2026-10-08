@@ -46,6 +46,7 @@ import * as Engine from "@wwtelescope/engine";
 import { MW_ANGLE_SCALE, UNITS_PER_KPC, imageUnitsToWorld, obliquityRad } from "./galaxy-frame";
 import { drawGalaxySprites, rebuildGalaxySprites } from "./galaxy-sprites";
 import { drawGalaxyDebugArms } from "./galaxy-debug";
+import { DEBUG } from "./debug";
 
 // Master switch (kept from v2; jwst-viewer's install path is unconditional).
 export const GALAXY3D_ENABLED = true;
@@ -301,8 +302,11 @@ function init(ctx: any): void {
   // just force the next draw to re-upload into the new vbo/ibo.
   meshDirty = true;
   // Console handle for live tier switching (__gxTier then __gxRebuild()).
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (window as any).__gxRebuild = rebuildGalaxy3D;
+  // ?debug=1 only (audit E7).
+  if (DEBUG) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__gxRebuild = rebuildGalaxy3D;
+  }
 }
 
 function uploadMesh(): void {
