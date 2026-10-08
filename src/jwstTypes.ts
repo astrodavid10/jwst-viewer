@@ -75,7 +75,9 @@ export const TYPE_META: Record<JwstType, JwstTypeMeta> = {
   galaxyMerger:    { label: "Interacting Galaxies",color: "#ff7fb0", icon: "circle-nodes",  group: "galaxies" },
   // ── Galaxy clusters, lensing, deep & distant ────────────────────────────
   galaxyCluster:   { label: "Galaxy Cluster",      color: "#7cfc9b", icon: "layer-group",  group: "deepAndDistant" },
-  gravitationalLens:{ label: "Gravitational Lens", color: "#5ee0c5", icon: "ring",          group: "deepAndDistant" },
+  // Was #5ee0c5, identical to planetaryNebula, so the two were
+  // indistinguishable as 3D markers (audit J10).
+  gravitationalLens:{ label: "Gravitational Lens", color: "#c6f36b", icon: "ring",          group: "deepAndDistant" },
   quasar:          { label: "Quasar / AGN",        color: "#d8b4ff", icon: "bolt",          group: "deepAndDistant" },
   deepField:       { label: "Deep Field / Survey", color: "#b0b6c8", icon: "table-cells",   group: "deepAndDistant" },
 };
@@ -339,7 +341,7 @@ add(["A fresh look at a classic deep field", "Portion of the Hubble eXtreme Deep
 add(["Webb Takes a Stunning, Star-Filled Portrait of the Pillars of Creation (Cropped)"], "nebula");
 
 // ════════════════════════════════════════════════════════════════════════════
-// 2026-07 expansion: 12 new Places from jwst-july2026.wtml (285 total).
+// 2026-07 expansion: 12 new Places from jwst-july2026.wtml (269 total after).
 // See jwstDistances.ts for matching distances and CATALOG_UPDATE.md for process.
 // No new fine types this batch — all roll into existing groups/chips.
 // ════════════════════════════════════════════════════════════════════════════
@@ -352,6 +354,24 @@ add("FS Tau (Webb NIRCam image)", "protostar");                                 
 add("Webb unveils young stars across every stage of formation", "nebula");         // Orion A molecular cloud
 add("Abell S1063 galaxy cluster", "galaxyCluster");
 add("A cosmic construction project", "galaxyCluster");                             // MACS J0553.4-3342
+
+// ════════════════════════════════════════════════════════════════════════════
+// 2026-10 expansion: 16 new Places from the esawebb.org refresh (285 total
+// after). No new fine types.
+// ════════════════════════════════════════════════════════════════════════════
+add("Webb opens a Treasure Chest filled with stars", "nebula");                    // Carina Nebula
+add(["Striking star clusters and irregular clumps", "Starstruck image of Arp 263",
+  "Arp 263 (crop)"], "galaxyMerger");                                              // final phase of a merger
+add("Galaxies in a cosmic house of mirrors", "galaxyCluster");                     // MACS J0454.1-0300, lensing
+add(["Lion Nebula (NIRCam + MIRI image)", "Lion Nebula (MIRI image)"], "planetaryNebula"); // NGC 2392
+add(["IRS 3 Field (NIRCam and MIRI image)", "IRS 3 Field (NIRCam image)",
+  "IRS 3 Field (MIRI image)"], "star");                                            // evolved star near Sgr A*
+add("IC 348 Crop: Star embedded in a nebula", "star");
+add("IC 348 Crop: Central star cluster", "starCluster");
+add("IC 348 Crop: Stars and faint outflows", "protostar");
+add("IC 348 Crop: Gravitational lensing", "gravitationalLens");
+add("IC 348 Crop: Spiral galaxies", "galaxy");
+add("NGC 7129 (NIRCam image)", "nebula");                                          // reflection nebula + young cluster
 
 /** Look up the fine object type for an image name. Returns null if unknown. */
 export function typeForName(name: string): JwstType | null {
