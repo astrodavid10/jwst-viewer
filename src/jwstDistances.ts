@@ -324,8 +324,7 @@ add(["Lion Nebula (NIRCam + MIRI image)", "Lion Nebula (MIRI image)"], { ly: 500
 add(["IRS 3 Field (NIRCam and MIRI image)", "IRS 3 Field (NIRCam image)", "IRS 3 Field (MIRI image)"],
   { ly: 26000, note: "IRS 3, 0.55 ly from Sagittarius A* (Galactic Center)." });
 add(["Star-forming region IC 348 (NIRCam image)", "IC 348 Crop: Star embedded in a nebula",
-  "IC 348 Crop: Central star cluster", "IC 348 Crop: Stars and faint outflows"],
-  { ly: 1000, note: "IC 348, Perseus (release: ~1000 ly)." });
+  "IC 348 Crop: Central star cluster", "IC 348 Crop: Stars and faint outflows"], { ly: 1000, note: "IC 348, Perseus (release: ~1000 ly)." });
 add("IC 348 Crop: Spiral galaxies", { ly: 1 * MLY, uncertain: true,
   note: "Background spirals seen through IC 348; release: ~1000× farther than the nebula." });
 add("IC 348 Crop: Gravitational lensing", { ly: 1 * GLY, uncertain: true,
