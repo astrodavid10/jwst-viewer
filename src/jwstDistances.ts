@@ -310,8 +310,8 @@ add("Abell S1063 galaxy cluster", { ly: 4 * GLY, note: "Abell S1063 (RXC J2248.7
 add("A cosmic construction project", { ly: 4.4 * GLY, uncertain: true, note: "Galaxy cluster MACS J0553.4-3342, z~0.412." });
 
 // ════════════════════════════════════════════════════════════════════════════
-// 2026-10 expansion: 16 new Places from the esawebb.org refresh (feeds/jwst in
-// wwt-core-catalogs; 285 total after). Distances are from each release's own
+// 2026-10 expansion: 17 new Places from the esawebb.org refresh (feeds/jwst in
+// wwt-core-catalogs; 286 total after). Distances are from each release's own
 // text where it gives one; `uncertain` marks the inferred ones.
 // ════════════════════════════════════════════════════════════════════════════
 add("Webb opens a Treasure Chest filled with stars", { ly: 7500, note: "Carina Nebula (release: 7500 ly)." });
@@ -323,8 +323,9 @@ add(["Lion Nebula (NIRCam + MIRI image)", "Lion Nebula (MIRI image)"], { ly: 500
   note: "NGC 2392 (Eskimo/Lion Nebula), Gemini; literature 4,000–6,500 ly." });
 add(["IRS 3 Field (NIRCam and MIRI image)", "IRS 3 Field (NIRCam image)", "IRS 3 Field (MIRI image)"],
   { ly: 26000, note: "IRS 3, 0.55 ly from Sagittarius A* (Galactic Center)." });
-add(["IC 348 Crop: Star embedded in a nebula", "IC 348 Crop: Central star cluster",
-  "IC 348 Crop: Stars and faint outflows"], { ly: 1000, note: "IC 348, Perseus (release: ~1000 ly)." });
+add(["Star-forming region IC 348 (NIRCam image)", "IC 348 Crop: Star embedded in a nebula",
+  "IC 348 Crop: Central star cluster", "IC 348 Crop: Stars and faint outflows"],
+  { ly: 1000, note: "IC 348, Perseus (release: ~1000 ly)." });
 add("IC 348 Crop: Spiral galaxies", { ly: 1 * MLY, uncertain: true,
   note: "Background spirals seen through IC 348; release: ~1000× farther than the nebula." });
 add("IC 348 Crop: Gravitational lensing", { ly: 1 * GLY, uncertain: true,

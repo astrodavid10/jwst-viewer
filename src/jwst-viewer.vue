@@ -574,6 +574,7 @@ function formatLy(ly: number): string {
 // punctuation/casing isn't required.
 const FEATURED_ORDER: string[] = [
   // October 2026 batch (esawebb.org releases weic2616–weic2620, potm2607–potm2609).
+  "Star-forming region IC 348 (NIRCam image)",
   "NGC 7129 (NIRCam image)",
   "IC 348 Crop: Central star cluster",
   "IC 348 Crop: Star embedded in a nebula",

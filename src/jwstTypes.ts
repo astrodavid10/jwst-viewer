@@ -356,7 +356,7 @@ add("Abell S1063 galaxy cluster", "galaxyCluster");
 add("A cosmic construction project", "galaxyCluster");                             // MACS J0553.4-3342
 
 // ════════════════════════════════════════════════════════════════════════════
-// 2026-10 expansion: 16 new Places from the esawebb.org refresh (285 total
+// 2026-10 expansion: 17 new Places from the esawebb.org refresh (286 total
 // after). No new fine types.
 // ════════════════════════════════════════════════════════════════════════════
 add("Webb opens a Treasure Chest filled with stars", "nebula");                    // Carina Nebula
@@ -366,6 +366,7 @@ add("Galaxies in a cosmic house of mirrors", "galaxyCluster");                  
 add(["Lion Nebula (NIRCam + MIRI image)", "Lion Nebula (MIRI image)"], "planetaryNebula"); // NGC 2392
 add(["IRS 3 Field (NIRCam and MIRI image)", "IRS 3 Field (NIRCam image)",
   "IRS 3 Field (MIRI image)"], "star");                                            // evolved star near Sgr A*
+add("Star-forming region IC 348 (NIRCam image)", "nebula");                      // 1.18-gigapixel mosaic
 add("IC 348 Crop: Star embedded in a nebula", "star");
 add("IC 348 Crop: Central star cluster", "starCluster");
 add("IC 348 Crop: Stars and faint outflows", "protostar");
