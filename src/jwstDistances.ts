@@ -331,6 +331,16 @@ add("IC 348 Crop: Gravitational lensing", { ly: 1 * GLY, uncertain: true,
   note: "Background lens behind IC 348; no redshift published, order-of-magnitude placement." });
 add("NGC 7129 (NIRCam image)", { ly: 3300, uncertain: true, note: "NGC 7129 reflection nebula + young cluster, Cepheus." });
 
+// ════════════════════════════════════════════════════════════════════════════
+// 2026-10-31 expansion: 6 new Places (potm2610, weic2621, weic2622; 292 total).
+// ════════════════════════════════════════════════════════════════════════════
+add(["Stars brewing in a nebulous cauldron", "N159 (wide view)"],
+  { ly: 161000, note: "N159 (LHA 120-N 159), Large Magellanic Cloud (release: 161,000 ly)." });
+add("FRB 20240304B (NIRCam clean image)", { ly: 10.8 * GLY,
+  note: "Host galaxy of the most distant FRB, z=2.148 (~3 Gyr after the Big Bang)." });
+add(["Cat’s Head Nebula (Hubble WFC3 image)", "Cat’s Head Nebula (Webb NIRCam image)",
+  "Cat’s Head Nebula (Webb MIRI image)"], { ly: 7500, note: "Pillar in the Carina Nebula (release: ~7,500 ly)." });
+
 /** Look up a curated distance (light-years) for an image by name. Returns null if unknown. */
 export function distanceForName(name: string): JwstDistance | null {
   return RAW[normalizeName(name)] ?? null;
