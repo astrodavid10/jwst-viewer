@@ -1,7 +1,7 @@
 # JWST Image Explorer
 
 James Webb Space Telescope imagery in WorldWide Telescope: a searchable gallery of
-286 Webb images placed on the sky, crossfading between them; a 3D view that puts
+292 Webb images placed on the sky, crossfading between them; a 3D view that puts
 each image at its true distance; a guided tour; same-target compare mode; and a
 museum kiosk mode. Built for INTUITIVE® Planetarium with the CosmicDS toolkit.
 

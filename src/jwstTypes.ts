@@ -374,6 +374,12 @@ add("IC 348 Crop: Gravitational lensing", "gravitationalLens");
 add("IC 348 Crop: Spiral galaxies", "galaxy");
 add("NGC 7129 (NIRCam image)", "nebula");                                          // reflection nebula + young cluster
 
+// 2026-10-31 expansion (potm2610, weic2621, weic2622).
+add(["Stars brewing in a nebulous cauldron", "N159 (wide view)"], "nebula");     // N159 star-forming region, LMC
+add("FRB 20240304B (NIRCam clean image)", "galaxy");                             // FRB host galaxy, z=2.148
+add(["Cat’s Head Nebula (Hubble WFC3 image)", "Cat’s Head Nebula (Webb NIRCam image)",
+  "Cat’s Head Nebula (Webb MIRI image)"], "nebula");                            // dust pillar in Carina
+
 /** Look up the fine object type for an image name. Returns null if unknown. */
 export function typeForName(name: string): JwstType | null {
   return RAW[normalizeName(name)] ?? null;

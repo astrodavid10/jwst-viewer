@@ -582,6 +582,13 @@ function formatLy(ly: number): string {
 // batch's new names here (newest first). Matched via normalizeName, so exact
 // punctuation/casing isn't required.
 const FEATURED_ORDER: string[] = [
+  // Late October 2026 batch (weic2622, potm2610, weic2621).
+  "Cat’s Head Nebula (Webb NIRCam image)",
+  "Cat’s Head Nebula (Webb MIRI image)",
+  "Cat’s Head Nebula (Hubble WFC3 image)",
+  "N159 (wide view)",
+  "Stars brewing in a nebulous cauldron",
+  "FRB 20240304B (NIRCam clean image)",
   // October 2026 batch (esawebb.org releases weic2616–weic2620, potm2607–potm2609).
   "Star-forming region IC 348 (NIRCam image)",
   "NGC 7129 (NIRCam image)",
