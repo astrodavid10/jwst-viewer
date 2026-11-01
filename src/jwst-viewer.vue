@@ -14,7 +14,7 @@
       <transition name="fade">
         <div class="modal" id="modal-loading" v-show="isLoading || bootError">
           <div class="container" v-if="!bootError" role="status">
-            <div class="spinner"></div>
+            <LoadingMirror />
             <p>{{ loadingStatus }}</p>
           </div>
           <div class="boot-error" v-else role="alert">
@@ -472,6 +472,7 @@ import { distanceLyForName, distanceForName, normalizeName } from "./jwstDistanc
 import { typeMetaForName } from "./jwstTypes";
 import { placeKey } from "./placeKey";
 import KioskQrModal from "./KioskQrModal.vue";
+import LoadingMirror from "./LoadingMirror.vue";
 import {
   installKioskGuards, scheduleDailyReload, createIdleWatcher, IdleWatcher, isHttpUrl,
   KIOSK_RELOAD_HOUR, KIOSK_IDLE_MS, KIOSK_ATTRACT_DWELL_MS, KIOSK_ATTRACT_FALLBACK_STEP_MS,
@@ -776,7 +777,8 @@ export default defineComponent({
   extends: MiniDSBase,
   name: "JwstViewer",
 
-  components: { "kiosk-qr-modal": KioskQrModal },
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- PascalCase component registration
+  components: { "kiosk-qr-modal": KioskQrModal, LoadingMirror },
 
   props: {
     wwtNamespace: { type: String, required: true },
